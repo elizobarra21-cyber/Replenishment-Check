@@ -1,0 +1,74 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum RequestStatus {
+  DRAFT
+  SUBMITTED
+  DONE
+}
+
+model Section {
+  id             String    @id @default(cuid())
+  name           String
+  warehouseOrder Int
+  products       Product[]
+
+  @@unique([name])
+}
+
+model SizeSystem {
+  id                  String    @id @default(cuid())
+  code                String    @unique
+  name                String
+  orderedSizes        Json
+  targetQtyBySize     Json
+  minDisplayItemCount Int       @default(5)
+  products            Product[]
+}
+
+model Product {
+  id           String     @id @default(cuid())
+  article      String     @unique
+  name         String
+  sectionId    String
+  sizeSystemId String
+  section      Section    @relation(fields: [sectionId], references: [id])
+  sizeSystem   SizeSystem @relation(fields: [sizeSystemId], references: [id])
+  requestItems RequestItem[]
+}
+
+model ReplenishmentRequest {
+  id        String        @id @default(cuid())
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+  createdBy String
+  status    RequestStatus @default(DRAFT)
+  items     RequestItem[]
+}
+
+model RequestItem {
+  id                  String               @id @default(cuid())
+  requestId           String
+  productId           String
+  article             String
+  color               String?
+  season              String?
+  storageSection      String?
+  labelPhotoUrl       String?
+  presentSizesQty     Json
+  neededSizesQty      Json
+  substitutePriority  Json
+  pickedSizesQty      Json?
+  warehouseNote       String?
+  createdAt           DateTime             @default(now())
+  request             ReplenishmentRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  product             Product              @relation(fields: [productId], references: [id])
+
+  @@index([requestId])
+}

@@ -1,36 +1,103 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Store Replenishment Miniapp
 
-## Getting Started
+Telegram miniapp prototype for store replenishment by label scan.
 
-First, run the development server:
+The app helps a hall worker scan a product label, mark sizes already present in the hall, and create a warehouse picking list for missing sizes.
+
+## Current Stack
+
+- Next.js 16 App Router
+- React 19
+- Prisma 6
+- SQLite
+- Tesseract.js client-side OCR
+- Tailwind CSS 4
+
+## Product Summary
+
+The hall worker scans the 17-digit code above the barcode. The code is parsed as:
+
+```text
+article color skip season storage
+4829101 123 45 6 7890
+```
+
+The required hall size set is:
+
+```text
+XS S M L XL
+```
+
+`Suggested sizes` are the missing sizes from that fixed set.
+
+## Documentation
+
+Start here:
+
+- [doc/PRODUCT_CONTEXT.md](./doc/PRODUCT_CONTEXT.md)
+- [doc/DEVELOPMENT_PLAN.md](./doc/DEVELOPMENT_PLAN.md)
+- [doc/AGENT_NOTES.md](./doc/AGENT_NOTES.md)
+- [doc/CHANGELOG.md](./doc/CHANGELOG.md)
+- [doc/GITHUB_PUBLISHING.md](./doc/GITHUB_PUBLISHING.md)
+
+Future developers and AI agents should read these before changing code.
+
+## Local Setup
+
+```bash
+npm install
+cp .env.example .env
+npm run prisma:generate
+npx prisma migrate deploy
+npm run db:seed
+```
+
+Run development server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Run production build locally:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm run build
+npm run start -- -p 3010
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Open on Mac:
 
-## Learn More
+```text
+http://localhost:3010
+```
 
-To learn more about Next.js, take a look at the following resources:
+Open on phone from the same Wi-Fi network using the `Network` URL shown by Next.js, for example:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```text
+http://192.168.1.106:3010
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Important Files
 
-## Deploy on Vercel
+- `app/page.tsx` - main Hall/Warehouse UI.
+- `lib/label-extractor.ts` - label OCR text parser.
+- `lib/replenishment.ts` - hall size replenishment rules.
+- `app/api/label/extract/route.ts` - label extraction API.
+- `app/api/scan/route.ts` - creates request items and computes suggested sizes.
+- `app/api/requests/[id]/warehouse/route.ts` - warehouse grouped list.
+- `prisma/schema.prisma` - Prisma data model.
+- `prisma/seed.ts` - local seed data.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Checks
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+npm run build
+```
+
+Before publishing to GitHub:
+
+```bash
+git status --short
+```
+
+Make sure `.env`, local SQLite databases, `.next`, and `node_modules` are not staged.
