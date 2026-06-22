@@ -117,7 +117,7 @@ Warehouse mode показывает компактный список: на то
 - Next.js 16 App Router
 - React 19
 - Prisma 6
-- SQLite
+- PostgreSQL (Supabase) для деплоя на Vercel; локально - тот же Postgres через connection pooler
 - Tesseract.js на клиенте (постоянный переиспользуемый worker, распознавание только цифр)
 - Tailwind CSS 4
 

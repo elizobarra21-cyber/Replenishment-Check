@@ -2,6 +2,27 @@
 
 Формат: новая запись сверху. После каждой итерации фиксировать, что изменилось и почему.
 
+## 2026-06-22 - Перевод на Postgres (Supabase) и подготовка к Vercel
+
+Что изменилось:
+
+- Prisma datasource переключён `sqlite -> postgresql` (`url` = `DATABASE_URL`, `directUrl` = `DIRECT_URL`), потому что на Vercel (serverless) SQLite-файл не сохраняется.
+- Создан Supabase-проект `store-replenishment` (eu-central-1), схема залита в Postgres.
+- SQLite-миграции удалены; схема Postgres ведётся через `prisma db push` / Supabase. Для serverless нужен connection pooler (IPv4), прямой хост `db.<ref>.supabase.co` отдаёт только IPv6.
+- `package.json`: добавлен `postinstall: prisma generate` (нужно для сборки на Vercel).
+- Добавлен `.vercelignore` (не выгружать `.env`, локальный `dev.db`, `.next`).
+- `.env.example` обновлён под Postgres (DATABASE_URL пулер :6543 + DIRECT_URL :5432).
+
+Почему:
+
+- Цель - опубликовать приложение на Vercel; для этого нужна облачная БД вместо локального SQLite.
+
+Открытые шаги (требуют аккаунтов пользователя):
+
+- Получить строку подключения Supabase (сброс пароля БД в дашборде) и прописать `DATABASE_URL`/`DIRECT_URL` в переменных Vercel.
+- Импортировать GitHub-репозиторий в Vercel и задеплоить.
+- RLS на таблицах выключен (приложение ходит через Prisma/postgres role в обход RLS, но anon-ключ Supabase открыт) - рекомендуется включить RLS.
+
 ## 2026-06-16 - Отметки на складе, сохранение режима, finish и скролл
 
 Что изменилось:
