@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 
+// Run this function in Frankfurt (fra1) - closest to the Supabase DB and to Israel.
+export const preferredRegion = "fra1";
+
 function compareLabelField(
   left: string | null | undefined,
   right: string | null | undefined,

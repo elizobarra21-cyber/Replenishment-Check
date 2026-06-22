@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { extractArticleFromLabel } from "@/lib/label-extractor";
 
+// Run this function in Frankfurt (fra1) - closest to the Supabase DB and to Israel.
+export const preferredRegion = "fra1";
+
 const extractSchema = z.object({
 	text: z.string().min(1),
 	hintText: z.string().optional(),

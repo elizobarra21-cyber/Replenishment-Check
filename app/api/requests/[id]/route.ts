@@ -2,6 +2,9 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
 
+// Run this function in Frankfurt (fra1) - closest to the Supabase DB and to Israel.
+export const preferredRegion = "fra1";
+
 export async function GET(
   _request: Request,
   context: { params: Promise<{ id: string }> },
