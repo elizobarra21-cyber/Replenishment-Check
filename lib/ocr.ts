@@ -45,6 +45,7 @@ type PreparedScan = {
 const MAX_OCR_SIDE = 2000;
 
 let workerPromise: Promise<OcrWorker> | null = null;
+let textWorkerPromise: Promise<OcrWorker> | null = null;
 
 async function createOcrWorker(): Promise<OcrWorker> {
   const mod = (await import("tesseract.js")) as unknown as {
@@ -78,23 +79,56 @@ function getOcrWorker(): Promise<OcrWorker> {
   return workerPromise;
 }
 
-/** Prepare the OCR worker ahead of time so the first scan is fast. */
-export function warmUpOcr(): void {
-  void getOcrWorker().catch(() => {});
+// A second worker that also reads uppercase letters, used to find the "EUR"
+// size line (e.g. "EUR 38" or "EUR M") so we can pick the right size system.
+async function createTextWorker(): Promise<OcrWorker> {
+  const mod = (await import("tesseract.js")) as unknown as {
+    createWorker: (
+      langs?: string,
+      oem?: number,
+      options?: Record<string, unknown>,
+    ) => Promise<OcrWorker>;
+  };
+  const worker = await mod.createWorker("eng", 1);
+  await worker.setParameters({
+    tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789 ",
+    preserve_interword_spaces: "1",
+    user_defined_dpi: "300",
+  });
+  return worker;
 }
 
-/** Tear the worker down to free memory (e.g. on unmount). */
-export async function terminateOcr(): Promise<void> {
-  if (!workerPromise) {
-    return;
+function getTextWorker(): Promise<OcrWorker> {
+  if (!textWorkerPromise) {
+    textWorkerPromise = createTextWorker().catch((err) => {
+      textWorkerPromise = null;
+      throw err;
+    });
   }
-  const pending = workerPromise;
+  return textWorkerPromise;
+}
+
+/** Prepare the OCR workers ahead of time so the first scan is fast. */
+export function warmUpOcr(): void {
+  void getOcrWorker().catch(() => {});
+  void getTextWorker().catch(() => {});
+}
+
+/** Tear the workers down to free memory (e.g. on unmount). */
+export async function terminateOcr(): Promise<void> {
+  const pending = [workerPromise, textWorkerPromise];
   workerPromise = null;
-  try {
-    const worker = await pending;
-    await worker.terminate();
-  } catch {
-    // ignore - nothing to clean up
+  textWorkerPromise = null;
+  for (const p of pending) {
+    if (!p) {
+      continue;
+    }
+    try {
+      const worker = await p;
+      await worker.terminate();
+    } catch {
+      // ignore - nothing to clean up
+    }
   }
 }
 
@@ -347,4 +381,37 @@ export async function readLabelCandidates(file: File): Promise<string[]> {
   pushUnique(candidates, seen, full.data.text ?? "");
 
   return candidates;
+}
+
+export type SizeSystem = "letter" | "numeric";
+
+/**
+ * Detect the garment size system from the label by reading the line that
+ * contains "EUR": a numeric size in 34..44 -> "numeric", a letter size
+ * (XS/S/M/L/XL) -> "letter". Returns null if nothing is recognized.
+ */
+export async function detectSizeSystem(file: File): Promise<SizeSystem | null> {
+  try {
+    const worker = await getTextWorker();
+    const { canvas } = await prepareScan(file);
+    const res = await worker.recognize(canvas, undefined, { text: true, blocks: true });
+
+    for (const line of flattenLines(res.data)) {
+      const upper = line.text.toUpperCase();
+      if (!/\bEUR?\b/.test(upper)) {
+        continue;
+      }
+      // Drop the EUR token; the size sits on the same line.
+      const rest = upper.replace(/\bEUR?\b/g, " ");
+      if (/(?:^|\D)(3[4-9]|4[0-4])(?:\D|$)/.test(rest)) {
+        return "numeric";
+      }
+      if (/\b(XS|S|M|L|XL)\b/.test(rest)) {
+        return "letter";
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }

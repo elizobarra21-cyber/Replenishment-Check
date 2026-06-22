@@ -43,6 +43,7 @@ const scanSchema = z.object({
     .optional()
     .default(""),
   presentSizesQty: z.record(z.string(), z.union([z.number(), z.string()])),
+  orderedSizes: z.array(z.string()).optional(),
 });
 
 async function ensureHallSizeSystem() {
@@ -111,8 +112,12 @@ export async function POST(request: Request) {
   const product = await getOrCreateScannedProduct(parsed.data.article);
 
   const presentSizesQty = normalizeSizeQty(parsed.data.presentSizesQty);
-  const orderedSizes = HALL_REQUIRED_SIZES;
-  const targetQtyBySize = HALL_TARGET_QTY_BY_SIZE;
+  // Letter sizes (XS..XL) by default, or the numeric run (34..42) detected from
+  // the label. The target is one of each size in the chosen system.
+  const orderedSizes = parsed.data.orderedSizes?.length
+    ? parsed.data.orderedSizes
+    : HALL_REQUIRED_SIZES;
+  const targetQtyBySize = Object.fromEntries(orderedSizes.map((size) => [size, 1]));
   const neededSizesQty = computeNeededSizes(
     orderedSizes,
     targetQtyBySize,

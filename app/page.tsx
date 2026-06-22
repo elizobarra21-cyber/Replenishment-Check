@@ -1,18 +1,34 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import {
-  HALL_REQUIRED_SIZES,
-  HALL_TARGET_QTY_BY_SIZE,
-} from "@/lib/replenishment";
+import { HALL_REQUIRED_SIZES } from "@/lib/replenishment";
 import {
   extractArticleFromLabel,
   type LabelExtractionResult,
 } from "@/lib/label-extractor";
-import { readLabelCandidates, terminateOcr, warmUpOcr } from "@/lib/ocr";
+import {
+  detectSizeSystem,
+  readLabelCandidates,
+  terminateOcr,
+  warmUpOcr,
+} from "@/lib/ocr";
 import { COMMON_COLORS, isHexColor, resolveColor } from "@/lib/colors";
 
 type SizeQtyMap = Record<string, number>;
+
+// Size systems: letters by default, or the numeric run detected from the label.
+const LETTER_SIZES = HALL_REQUIRED_SIZES;
+const NUMERIC_SIZES = ["34", "36", "38", "40", "42"];
+
+// Order a size map for display: numeric keys sort numerically, otherwise use the
+// XS..XL order (extra keys are appended by orderedSizeKeys).
+function inferOrderedSizes(map: SizeQtyMap): string[] {
+  const keys = Object.keys(map);
+  if (keys.length > 0 && keys.every((key) => /^\d+$/.test(key))) {
+    return keys.slice().sort((a, b) => Number(a) - Number(b));
+  }
+  return LETTER_SIZES;
+}
 
 type Product = {
   id: string;
@@ -76,15 +92,6 @@ function orderedSizeKeys(map: SizeQtyMap, orderedSizes: string[] = []) {
   }
 
   return keys;
-}
-
-function formatSizeMap(map: SizeQtyMap, orderedSizes: string[] = []) {
-  const chunks = orderedSizeKeys(map, orderedSizes)
-    .map((size) => [size, Number(map[size] ?? 0)] as const)
-    .filter(([, qty]) => qty > 0)
-    .map(([size, qty]) => `${size} x${qty}`);
-
-  return chunks.length ? chunks.join(", ") : "-";
 }
 
 function explodeSizeMap(map: SizeQtyMap, orderedSizes: string[] = []) {
@@ -254,14 +261,12 @@ function ColorSwatch({ value, size = 14 }: { value: string; size?: number }) {
 
 function SizeTiles({
   map,
-  orderedSizes,
   variant,
 }: {
   map: SizeQtyMap;
-  orderedSizes: string[];
   variant: "need" | "present";
 }) {
-  const tokens = explodeSizeMap(map, orderedSizes);
+  const tokens = explodeSizeMap(map, inferOrderedSizes(map));
   if (!tokens.length) {
     return <span className="text-sm text-black/35">-</span>;
   }
@@ -356,6 +361,12 @@ export default function Home() {
   const [currentLabelPhotoUrl, setCurrentLabelPhotoUrl] = useState<string | null>(null);
   const [photoViewer, setPhotoViewer] = useState<{ article: string; url: string } | null>(null);
   const [photoNotice, setPhotoNotice] = useState("");
+  // Entry only appears after a scan or "Type manually"; back to scanner buttons after add.
+  const [entryStarted, setEntryStarted] = useState(false);
+  // Detected from the label's EUR line: numeric sizes (34..42) vs letters (XS..XL).
+  const [numericSizes, setNumericSizes] = useState(false);
+  // Warehouse: collapse the handled (taken/absent) items so only needed ones stand out.
+  const [showDone, setShowDone] = useState(false);
 
   useEffect(() => {
     const createRequest = async () => {
@@ -436,32 +447,50 @@ export default function Home() {
     };
   }, []);
 
-  const selectedOrderedSizes = HALL_REQUIRED_SIZES;
+  const requiredSizes = numericSizes ? NUMERIC_SIZES : LETTER_SIZES;
 
   const neededPreview = useMemo(() => {
-    return HALL_REQUIRED_SIZES.reduce<SizeQtyMap>((acc, size) => {
-      const target = HALL_TARGET_QTY_BY_SIZE[size] ?? 1;
+    return requiredSizes.reduce<SizeQtyMap>((acc, size) => {
       const current = presentSizesQty[size] ?? 0;
-      if (target > current) {
-        acc[size] = target - current;
+      if (current < 1) {
+        acc[size] = 1 - current;
       }
       return acc;
     }, {});
-  }, [presentSizesQty]);
+  }, [presentSizesQty, requiredSizes]);
 
   const presentSizeTokens = useMemo(
-    () => explodeSizeMap(presentSizesQty, selectedOrderedSizes),
-    [presentSizesQty, selectedOrderedSizes],
+    () => explodeSizeMap(presentSizesQty, requiredSizes),
+    [presentSizesQty, requiredSizes],
   );
 
   const neededSizeTokens = useMemo(
-    () => explodeSizeMap(neededPreview, selectedOrderedSizes),
-    [neededPreview, selectedOrderedSizes],
+    () => explodeSizeMap(neededPreview, requiredSizes),
+    [neededPreview, requiredSizes],
   );
 
   const hallBriefGroups = useMemo(
     () => groupItemsBySection(draftItems),
     [draftItems],
+  );
+
+  const warehouseActiveGroups = useMemo(
+    () =>
+      warehouseGroups
+        .map((group) => ({
+          ...group,
+          items: group.items.filter((item) => !item.pickStatus),
+        }))
+        .filter((group) => group.items.length > 0),
+    [warehouseGroups],
+  );
+
+  const warehouseDoneItems = useMemo(
+    () =>
+      warehouseGroups.flatMap((group) =>
+        group.items.filter((item) => item.pickStatus),
+      ),
+    [warehouseGroups],
   );
   const parsedForFields = lastParsed ?? createEmptyParsedLabel();
 
@@ -487,11 +516,15 @@ export default function Home() {
     setError("");
     setPhotoNotice("");
     setScanBusy(true);
+    setEntryStarted(true);
 
     const photoUrlPromise = createLabelPhotoUrl(file).catch(() => "");
+    const sizeSystemPromise = detectSizeSystem(file).catch(() => null);
 
     try {
       const candidates = await readLabelCandidates(file);
+      const sizeSystem = await sizeSystemPromise;
+      setNumericSizes(sizeSystem === "numeric");
 
       let extracted: LabelExtractionResult | null = null;
       let articleOnly: LabelExtractionResult | null = null;
@@ -535,6 +568,16 @@ export default function Home() {
     }
   }
 
+  function handleTypeManually() {
+    setError("");
+    setPhotoNotice("");
+    setNumericSizes(false);
+    setCurrentLabelPhotoUrl(null);
+    setScannedForCurrentItem(false);
+    setLastParsed(createEmptyParsedLabel());
+    setEntryStarted(true);
+  }
+
   async function handleAddItem() {
     if (!requestId || !lastParsed?.article) {
       setError("Scan the code or enter article before adding to warehouse list.");
@@ -558,6 +601,7 @@ export default function Home() {
           storageSection: lastParsed.storageSection,
           labelPhotoUrl: currentLabelPhotoUrl ?? "",
           presentSizesQty,
+          orderedSizes: requiredSizes,
         }),
       });
 
@@ -574,6 +618,8 @@ export default function Home() {
       setColorValue("");
       setCurrentLabelPhotoUrl(null);
       setPresentSizesQty({});
+      setEntryStarted(false);
+      setNumericSizes(false);
 
       if (typeof window !== "undefined") {
         window.scrollTo({ top: 0, behavior: "smooth" });
@@ -660,6 +706,9 @@ export default function Home() {
       setColorValue("");
       setCurrentLabelPhotoUrl(null);
       setScannedForCurrentItem(false);
+      setEntryStarted(false);
+      setNumericSizes(false);
+      setShowDone(false);
       setMode("hall");
     } catch {
       setError("Unable to finish replenishment.");
@@ -765,28 +814,24 @@ export default function Home() {
               </div>
 
               <div className="rounded-xl border border-black/10 bg-white p-3">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-black/60">
-                  Label scanner
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  <label className="inline-flex cursor-pointer items-center justify-center rounded-xl bg-accent px-3 py-2 text-sm font-semibold text-white">
-                    {scanBusy ? "Scanning..." : "Scan from camera"}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      className="hidden"
-                      disabled={scanBusy}
-                      onChange={(event) => {
-                        const file = event.target.files?.[0] ?? null;
-                        void handleScanLabel(file);
-                        event.currentTarget.value = "";
-                      }}
-                    />
-                  </label>
-
-                  <label className="inline-flex cursor-pointer items-center justify-center rounded-xl border border-accent bg-white px-3 py-2 text-sm font-semibold text-accent">
-                    {scanBusy ? "Scanning..." : "Scan from gallery"}
+                <label className="flex w-full cursor-pointer items-center justify-center rounded-xl bg-accent px-4 py-4 text-base font-semibold text-white active:scale-[0.99]">
+                  {scanBusy ? "Scanning..." : "Scan from camera"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="hidden"
+                    disabled={scanBusy}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0] ?? null;
+                      void handleScanLabel(file);
+                      event.currentTarget.value = "";
+                    }}
+                  />
+                </label>
+                <div className="mt-2 flex items-center justify-center gap-5 text-xs font-semibold text-black/45">
+                  <label className="cursor-pointer underline underline-offset-2 hover:text-black/70">
+                    {scanBusy ? "..." : "Scan from gallery"}
                     <input
                       type="file"
                       accept="image/*"
@@ -799,9 +844,25 @@ export default function Home() {
                       }}
                     />
                   </label>
+                  <button
+                    type="button"
+                    disabled={scanBusy}
+                    onClick={handleTypeManually}
+                    className="underline underline-offset-2 hover:text-black/70 disabled:opacity-50"
+                  >
+                    Type manually
+                  </button>
                 </div>
               </div>
 
+              {error ? (
+                <div className="mt-3 rounded-xl bg-danger-soft px-3 py-2 text-sm">
+                  {error}
+                </div>
+              ) : null}
+
+              {entryStarted ? (
+                <>
               <div className="mt-3 rounded-xl border border-black/10 bg-white px-3 py-2">
                 <p className="text-xs font-semibold uppercase tracking-wider text-black/60">
                   Last parsed code
@@ -938,7 +999,7 @@ export default function Home() {
                   Choose existing sizes
                 </p>
                 <div className="mt-2 grid grid-cols-5 gap-2">
-                  {HALL_REQUIRED_SIZES.map((size) => (
+                  {requiredSizes.map((size) => (
                     <button
                       key={size}
                       type="button"
@@ -999,12 +1060,6 @@ export default function Home() {
                 </div>
               </div>
 
-              {error ? (
-                <div className="mt-3 rounded-xl bg-danger-soft px-3 py-2 text-sm">
-                  {error}
-                </div>
-              ) : null}
-
               <button
                 onClick={() => void handleAddItem()}
                 disabled={busy || !lastParsed?.article}
@@ -1012,22 +1067,28 @@ export default function Home() {
               >
                 Add to list
               </button>
+                </>
+              ) : null}
 
-              <button
-                onClick={() => void handleGoWarehouse()}
-                disabled={busy || draftItems.length === 0}
-                className="mt-2 w-full rounded-xl border border-accent bg-white px-4 py-3 text-sm font-semibold text-accent disabled:opacity-60"
-              >
-                Go to warehouse
-              </button>
+              {!entryStarted && draftItems.length > 0 ? (
+                <>
+                  <button
+                    onClick={() => void handleGoWarehouse()}
+                    disabled={busy}
+                    className="mt-3 w-full rounded-xl border border-accent bg-white px-4 py-3 text-sm font-semibold text-accent disabled:opacity-60"
+                  >
+                    Go to warehouse
+                  </button>
 
-              <button
-                onClick={() => void handleFinishReplenishment()}
-                disabled={busy || draftItems.length === 0}
-                className="mt-2 w-full rounded-xl border border-danger/40 bg-white px-4 py-3 text-sm font-semibold text-danger disabled:opacity-60"
-              >
-                Finish replenishment
-              </button>
+                  <button
+                    onClick={() => void handleFinishReplenishment()}
+                    disabled={busy}
+                    className="mt-2 w-full rounded-xl border border-danger/40 bg-white px-4 py-3 text-sm font-semibold text-danger disabled:opacity-60"
+                  >
+                    Finish replenishment
+                  </button>
+                </>
+              ) : null}
             </section>
 
             <section className="rounded-2xl border border-black/10 bg-panel p-5 shadow-sm">
@@ -1047,12 +1108,7 @@ export default function Home() {
                           >
                             <div className="flex items-center justify-between gap-3">
                               <span className="truncate font-semibold">{item.article}</span>
-                              <span className="text-right text-black/70">
-                                {formatSizeMap(
-                                  item.presentSizesQty,
-                                  item.product.sizeSystem.orderedSizes,
-                                )}
-                              </span>
+                              <SizeTiles map={item.presentSizesQty} variant="present" />
                             </div>
                             {item.color || item.colorName ? (
                               <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-black/55">
@@ -1106,9 +1162,13 @@ export default function Home() {
 
             {warehouseGroups.length === 0 ? (
               <p className="text-sm text-black/60">No warehouse items.</p>
+            ) : warehouseActiveGroups.length === 0 ? (
+              <p className="text-sm text-black/60">
+                All items handled. See the list below or finish.
+              </p>
             ) : (
               <div className="space-y-3">
-                {warehouseGroups.map((group) => (
+                {warehouseActiveGroups.map((group) => (
                   <div key={group.sectionId} className="rounded-xl border border-black/10 bg-white p-3">
                     <h3 className="text-sm font-semibold">{group.sectionName}</h3>
                     <div className="mt-1.5 divide-y divide-black/5">
@@ -1129,11 +1189,7 @@ export default function Home() {
                               <span className="text-xs font-semibold uppercase tracking-wide text-accent">
                                 need
                               </span>
-                              <SizeTiles
-                                map={item.neededSizesQty}
-                                orderedSizes={item.product.sizeSystem.orderedSizes}
-                                variant="need"
-                              />
+                              <SizeTiles map={item.neededSizesQty} variant="need" />
                             </div>
                           </div>
 
@@ -1145,11 +1201,7 @@ export default function Home() {
                             <span>season {formatLabelPart(item.season)}</span>
                             <span className="inline-flex items-center gap-1.5">
                               present
-                              <SizeTiles
-                                map={item.presentSizesQty}
-                                orderedSizes={item.product.sizeSystem.orderedSizes}
-                                variant="present"
-                              />
+                              <SizeTiles map={item.presentSizesQty} variant="present" />
                             </span>
                           </div>
 
@@ -1191,6 +1243,55 @@ export default function Home() {
                 ))}
               </div>
             )}
+
+            {warehouseDoneItems.length > 0 ? (
+              <div className="mt-3 rounded-xl border border-black/10 bg-background/60 p-3">
+                <button
+                  type="button"
+                  onClick={() => setShowDone((value) => !value)}
+                  className="flex w-full items-center justify-between text-xs font-semibold uppercase tracking-wider text-black/45"
+                >
+                  <span>Picked / not in stock ({warehouseDoneItems.length})</span>
+                  <span>{showDone ? "Hide" : "Show"}</span>
+                </button>
+                {showDone ? (
+                  <div className="mt-2 divide-y divide-black/5">
+                    {warehouseDoneItems.map((item) => (
+                      <div
+                        key={item.id}
+                        className="flex items-center justify-between gap-2 py-1 text-xs"
+                      >
+                        <span className="truncate text-black/40 line-through">
+                          {item.article}
+                        </span>
+                        <span className="flex shrink-0 items-center gap-2">
+                          <span
+                            className={
+                              item.pickStatus === "taken" ? "text-accent" : "text-danger"
+                            }
+                          >
+                            {item.pickStatus === "taken" ? "taken" : "absent"}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void handleSetPickStatus(
+                                item,
+                                item.pickStatus === "absent" ? "absent" : "taken",
+                              )
+                            }
+                            className="text-black/40 underline underline-offset-2"
+                            title="Move back to the active list"
+                          >
+                            undo
+                          </button>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
 
             <button
               onClick={() => void handleFinishReplenishment()}
