@@ -383,12 +383,15 @@ export async function readLabelCandidates(file: File): Promise<string[]> {
   return candidates;
 }
 
-export type SizeSystem = "letter" | "numeric";
+export type SizeSystem = "letter" | "small" | "large";
 
 /**
  * Detect the garment size system from the label by reading the line that
- * contains "EUR": a numeric size in 34..44 -> "numeric", a letter size
- * (XS/S/M/L/XL) -> "letter". Returns null if nothing is recognized.
+ * contains "EUR":
+ *   - numeric 24..32 -> "small" (sizes 25..31)
+ *   - numeric 34..44 -> "large" (sizes 34,36,38,40,42)
+ *   - letters XS/S/M/L/XL -> "letter"
+ * Returns null if nothing is recognized.
  */
 export async function detectSizeSystem(file: File): Promise<SizeSystem | null> {
   try {
@@ -403,8 +406,11 @@ export async function detectSizeSystem(file: File): Promise<SizeSystem | null> {
       }
       // Drop the EUR token; the size sits on the same line.
       const rest = upper.replace(/\bEUR?\b/g, " ");
+      if (/(?:^|\D)(2[4-9]|3[0-2])(?:\D|$)/.test(rest)) {
+        return "small";
+      }
       if (/(?:^|\D)(3[4-9]|4[0-4])(?:\D|$)/.test(rest)) {
-        return "numeric";
+        return "large";
       }
       if (/\b(XS|S|M|L|XL)\b/.test(rest)) {
         return "letter";

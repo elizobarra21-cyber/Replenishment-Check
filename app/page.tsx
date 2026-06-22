@@ -16,9 +16,10 @@ import { COMMON_COLORS, isHexColor, resolveColor } from "@/lib/colors";
 
 type SizeQtyMap = Record<string, number>;
 
-// Size systems: letters by default, or the numeric run detected from the label.
+// Size systems, chosen from the label's EUR line.
 const LETTER_SIZES = HALL_REQUIRED_SIZES;
-const NUMERIC_SIZES = ["34", "36", "38", "40", "42"];
+const SMALL_NUMERIC_SIZES = ["25", "26", "27", "28", "29", "30", "31"]; // EUR 24..32
+const LARGE_NUMERIC_SIZES = ["34", "36", "38", "40", "42"]; // EUR 34..44
 
 // Order a size map for display: numeric keys sort numerically, otherwise use the
 // XS..XL order (extra keys are appended by orderedSizeKeys).
@@ -363,8 +364,8 @@ export default function Home() {
   const [photoNotice, setPhotoNotice] = useState("");
   // Entry only appears after a scan or "Type manually"; back to scanner buttons after add.
   const [entryStarted, setEntryStarted] = useState(false);
-  // Detected from the label's EUR line: numeric sizes (34..42) vs letters (XS..XL).
-  const [numericSizes, setNumericSizes] = useState(false);
+  // Size system detected from the label's EUR line.
+  const [sizeSystem, setSizeSystem] = useState<"letter" | "small" | "large">("letter");
   // Warehouse: collapse the handled (taken/absent) items so only needed ones stand out.
   const [showDone, setShowDone] = useState(false);
 
@@ -447,7 +448,12 @@ export default function Home() {
     };
   }, []);
 
-  const requiredSizes = numericSizes ? NUMERIC_SIZES : LETTER_SIZES;
+  const requiredSizes =
+    sizeSystem === "small"
+      ? SMALL_NUMERIC_SIZES
+      : sizeSystem === "large"
+        ? LARGE_NUMERIC_SIZES
+        : LETTER_SIZES;
 
   const neededPreview = useMemo(() => {
     return requiredSizes.reduce<SizeQtyMap>((acc, size) => {
@@ -523,8 +529,8 @@ export default function Home() {
 
     try {
       const candidates = await readLabelCandidates(file);
-      const sizeSystem = await sizeSystemPromise;
-      setNumericSizes(sizeSystem === "numeric");
+      const detected = await sizeSystemPromise;
+      setSizeSystem(detected ?? "letter");
 
       let extracted: LabelExtractionResult | null = null;
       let articleOnly: LabelExtractionResult | null = null;
@@ -571,7 +577,7 @@ export default function Home() {
   function handleTypeManually() {
     setError("");
     setPhotoNotice("");
-    setNumericSizes(false);
+    setSizeSystem("letter");
     setCurrentLabelPhotoUrl(null);
     setScannedForCurrentItem(false);
     setLastParsed(createEmptyParsedLabel());
@@ -619,7 +625,7 @@ export default function Home() {
       setCurrentLabelPhotoUrl(null);
       setPresentSizesQty({});
       setEntryStarted(false);
-      setNumericSizes(false);
+      setSizeSystem("letter");
 
       if (typeof window !== "undefined") {
         window.scrollTo({ top: 0, behavior: "smooth" });
@@ -707,7 +713,7 @@ export default function Home() {
       setCurrentLabelPhotoUrl(null);
       setScannedForCurrentItem(false);
       setEntryStarted(false);
-      setNumericSizes(false);
+      setSizeSystem("letter");
       setShowDone(false);
       setMode("hall");
     } catch {
@@ -721,7 +727,7 @@ export default function Home() {
     const next = item.pickStatus === status ? null : status;
     const previous = item.pickStatus ?? null;
 
-    const apply = (value: string | null) =>
+    const apply = (value: string | null) => {
       setWarehouseGroups((groups) =>
         groups.map((group) => ({
           ...group,
@@ -730,6 +736,13 @@ export default function Home() {
           ),
         })),
       );
+      // Keep the Hall short list in sync so worked items show struck through there too.
+      setDraftItems((items) =>
+        items.map((entry) =>
+          entry.id === item.id ? { ...entry, pickStatus: value } : entry,
+        ),
+      );
+    };
 
     apply(next); // optimistic update for a snappy tap
 
@@ -998,7 +1011,11 @@ export default function Home() {
                 <p className="text-xs font-semibold uppercase tracking-wider text-black/60">
                   Choose existing sizes
                 </p>
-                <div className="mt-2 grid grid-cols-5 gap-2">
+                <div
+                  className={`mt-2 grid gap-2 ${
+                    requiredSizes.length > 5 ? "grid-cols-4" : "grid-cols-5"
+                  }`}
+                >
                   {requiredSizes.map((size) => (
                     <button
                       key={size}
@@ -1107,7 +1124,13 @@ export default function Home() {
                             className="rounded-lg bg-background px-3 py-2 text-sm"
                           >
                             <div className="flex items-center justify-between gap-3">
-                              <span className="truncate font-semibold">{item.article}</span>
+                              <span
+                                className={`truncate font-semibold ${
+                                  item.pickStatus ? "text-black/40 line-through" : ""
+                                }`}
+                              >
+                                {item.article}
+                              </span>
                               <SizeTiles map={item.presentSizesQty} variant="present" />
                             </div>
                             {item.color || item.colorName ? (
