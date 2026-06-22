@@ -30,6 +30,8 @@ XS S M L XL
 
 `Suggested sizes` are the missing sizes from that fixed set.
 
+There is no product catalog or warehouse stock database. After a scan or manual article entry, `Add to list` saves the item into a smart warehouse list built from the label data and selected hall sizes.
+
 ## Documentation
 
 Start here:

@@ -6,6 +6,7 @@
   --panel: #ffffff;
   --accent: #176c5d;
   --accent-soft: #e2f4ee;
+  --danger: #c0392b;
   --danger-soft: #ffe7e0;
 }
 
@@ -15,6 +16,7 @@
   --color-panel: var(--panel);
   --color-accent: var(--accent);
   --color-accent-soft: var(--accent-soft);
+  --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
   --font-sans: "Geist", "Geist Fallback", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Geist Mono", "Geist Mono Fallback", ui-monospace, monospace;

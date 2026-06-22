@@ -15,7 +15,6 @@ export type LabelExtractionResult = {
 };
 
 export type LabelExtractionOptions = {
-	knownArticles?: string[];
 	hintText?: string;
 	preferredDigits?: number;
 };
@@ -73,7 +72,7 @@ function collectNumericCandidates(text: string): string[] {
 	return candidates;
 }
 
-function collectArticleCandidates(text: string, knownArticles: string[]): string[] {
+function collectArticleCandidates(text: string): string[] {
 	const candidates: string[] = [];
 	const seen = new Set<string>();
 
@@ -81,18 +80,6 @@ function collectArticleCandidates(text: string, knownArticles: string[]): string
 		if (/^\d{7}$/.test(value) && !seen.has(value)) {
 			seen.add(value);
 			candidates.push(value);
-		}
-	}
-
-	for (const article of knownArticles) {
-		const normalizedArticle = article.replace(/\D/g, "");
-		if (normalizedArticle.length !== 7) {
-			continue;
-		}
-
-		const articlePattern = new RegExp(`(?:^|\\D)${normalizedArticle}(?=\\D|$)`);
-		if (articlePattern.test(text)) {
-			addCandidate(normalizedArticle);
 		}
 	}
 
@@ -173,10 +160,7 @@ export function extractArticleFromLabel(
 	const normalizedText = normalizeText(rawText);
 	const parsedLine = parseStructuredCodeLine(normalizedText);
 	const candidates = collectNumericCandidates(normalizedText);
-	const articleCandidates = collectArticleCandidates(
-		normalizedText,
-		options.knownArticles ?? [],
-	);
+	const articleCandidates = collectArticleCandidates(normalizedText);
 
 	if (parsedLine) {
 		return {

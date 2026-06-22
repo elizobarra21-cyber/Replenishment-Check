@@ -11,6 +11,21 @@ function compareLabelField(
   });
 }
 
+function storageOrder(storageSection: string | null | undefined) {
+  const order = Number(storageSection);
+  return Number.isInteger(order) && order > 0 ? order : 9999;
+}
+
+function storageGroupId(storageSection: string | null | undefined) {
+  const normalized = storageSection?.trim();
+  return normalized ? `storage-${normalized}` : "storage-unassigned";
+}
+
+function storageGroupName(storageSection: string | null | undefined) {
+  const normalized = storageSection?.trim();
+  return normalized ? `Department ${normalized}` : "No department";
+}
+
 export async function GET(
   _request: Request,
   context: { params: Promise<{ id: string }> },
@@ -38,10 +53,14 @@ export async function GET(
   }
 
   const sortedItems = [...requestData.items].sort((a, b) => {
-    const sectionDelta =
-      a.product.section.warehouseOrder - b.product.section.warehouseOrder;
+    const sectionDelta = storageOrder(a.storageSection) - storageOrder(b.storageSection);
     if (sectionDelta !== 0) {
       return sectionDelta;
+    }
+
+    const storageDelta = compareLabelField(a.storageSection, b.storageSection);
+    if (storageDelta !== 0) {
+      return storageDelta;
     }
 
     const articleDelta = compareLabelField(a.article, b.article);
@@ -65,16 +84,17 @@ export async function GET(
       items: typeof sortedItems;
     }>
   >((acc, item) => {
-    const existing = acc.find((entry) => entry.sectionId === item.product.section.id);
+    const sectionId = storageGroupId(item.storageSection);
+    const existing = acc.find((entry) => entry.sectionId === sectionId);
     if (existing) {
       existing.items.push(item);
       return acc;
     }
 
     acc.push({
-      sectionId: item.product.section.id,
-      sectionName: item.product.section.name,
-      warehouseOrder: item.product.section.warehouseOrder,
+      sectionId,
+      sectionName: storageGroupName(item.storageSection),
+      warehouseOrder: storageOrder(item.storageSection),
       items: [item],
     });
 
@@ -84,6 +104,6 @@ export async function GET(
   return NextResponse.json({
     request: requestData,
     grouped,
-    sortOrder: ["warehouseOrder", "article", "season", "color"],
+    sortOrder: ["storageSection", "article", "season", "color"],
   });
 }

@@ -63,4 +63,4 @@ git commit -m "Initial store replenishment miniapp"
 - Как будет устроена Telegram authentication.
 - Где будет production hosting.
 - Останется ли SQLite или будет переход на managed DB.
-- Как будет загружаться реальный каталог товаров.
+- Как долго хранить заявки, элементы заявок и фото сканов.

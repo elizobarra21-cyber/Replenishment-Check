@@ -30,6 +30,7 @@ const scanSchema = z.object({
   requestId: z.string().min(1),
   article: z.string().min(1),
   color: z.string().trim().max(32).optional().default(""),
+  colorName: z.string().trim().max(32).optional().default(""),
   season: z.string().trim().max(32).optional().default(""),
   storageSection: z.string().trim().max(32).optional().default(""),
   labelPhotoUrl: z
@@ -41,34 +42,59 @@ const scanSchema = z.object({
   presentSizesQty: z.record(z.string(), z.union([z.number(), z.string()])),
 });
 
-async function findProductByLabelArticle(article: string) {
-  const exactProduct = await prisma.product.findUnique({
+async function ensureHallSizeSystem() {
+  return prisma.sizeSystem.upsert({
+    where: { code: "HALL_XS_XL" },
+    update: {
+      orderedSizes: HALL_REQUIRED_SIZES,
+      targetQtyBySize: HALL_TARGET_QTY_BY_SIZE,
+      minDisplayItemCount: HALL_REQUIRED_SIZES.length,
+    },
+    create: {
+      code: "HALL_XS_XL",
+      name: "Hall sizes XS-XL",
+      orderedSizes: HALL_REQUIRED_SIZES,
+      targetQtyBySize: HALL_TARGET_QTY_BY_SIZE,
+      minDisplayItemCount: HALL_REQUIRED_SIZES.length,
+    },
+  });
+}
+
+async function ensureScannedItemsSection() {
+  return prisma.section.upsert({
+    where: { name: "Scanned items" },
+    update: { warehouseOrder: 9999 },
+    create: {
+      name: "Scanned items",
+      warehouseOrder: 9999,
+    },
+  });
+}
+
+async function getOrCreateScannedProduct(article: string) {
+  const [section, sizeSystem] = await Promise.all([
+    ensureScannedItemsSection(),
+    ensureHallSizeSystem(),
+  ]);
+
+  return prisma.product.upsert({
     where: { article },
-    include: { sizeSystem: true },
+    update: {
+      name: `Scanned article ${article}`,
+      sectionId: section.id,
+      sizeSystemId: sizeSystem.id,
+    },
+    create: {
+      article,
+      name: `Scanned article ${article}`,
+      sectionId: section.id,
+      sizeSystemId: sizeSystem.id,
+    },
+    include: {
+      section: true,
+      sizeSystem: true,
+    },
   });
-
-  if (exactProduct) {
-    return exactProduct;
-  }
-
-  const products = await prisma.product.findMany({
-    include: { sizeSystem: true },
-  });
-  const prefixMatches = products
-    .filter(
-      (product) =>
-        article.startsWith(product.article) || product.article.startsWith(article),
-    )
-    .sort((a, b) => b.article.length - a.article.length);
-
-  if (
-    prefixMatches.length === 1 ||
-    prefixMatches[0]?.article.length !== prefixMatches[1]?.article.length
-  ) {
-    return prefixMatches[0];
-  }
-
-  return null;
 }
 
 export async function POST(request: Request) {
@@ -79,14 +105,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const product = await findProductByLabelArticle(parsed.data.article);
-
-  if (!product) {
-    return NextResponse.json(
-      { error: "Article was not found in catalog" },
-      { status: 404 },
-    );
-  }
+  const product = await getOrCreateScannedProduct(parsed.data.article);
 
   const presentSizesQty = normalizeSizeQty(parsed.data.presentSizesQty);
   const orderedSizes = HALL_REQUIRED_SIZES;
@@ -104,6 +123,7 @@ export async function POST(request: Request) {
       productId: product.id,
       article: parsed.data.article,
       color: parsed.data.color || null,
+      colorName: parsed.data.colorName || null,
       season: parsed.data.season || null,
       storageSection: parsed.data.storageSection || null,
       labelPhotoUrl: parsed.data.labelPhotoUrl || null,

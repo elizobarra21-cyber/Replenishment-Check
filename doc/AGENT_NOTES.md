@@ -18,15 +18,29 @@
 - Размеры можно выбирать до завершения OCR.
 - `Suggested sizes` - отсутствующие размеры из `XS S M L XL`.
 - Код этикетки целевой длины - 17 цифр.
+- Сканер читает код только из узкой полосы непосредственно над штрих-кодом; сам баркод, EAN под ним и прочие числа на этикетке не считываются.
+- Палитра расположена вплотную к полю `color`. Выбранный визуальный цвет пишется в `RequestItem.colorName` через `/api/scan` и показывается образцом в Hall-списке и в Warehouse mode. Кодовое значение `color` из этикетки сохраняется отдельно, как раньше.
 - Отображать распознанный код с пробелами: `article color skip season storage`.
 - `skip` - две цифры после color, они не используются в модели заявки.
+- В продукте нет каталога товаров и базы складских остатков.
+- Не добавлять UX или backend-логику сверки артикула с каталогом.
+- `/api/scan` создает элемент заявки из скана и выбранных размеров.
+- `requestId` сохраняется в `localStorage`; при загрузке заявка и её товары восстанавливаются из БД (`GET /api/requests/[id]`). Список очищается только кнопкой `Finish replenishment` (есть в Hall и Warehouse; помечает заявку `DONE` через `PATCH`, заводит новую).
+- Текущий режим (`hall`/`warehouse`) сохраняется в `localStorage` и восстанавливается при загрузке; для warehouse заново подгружается складской список.
+- Отметки склада: `Taken`/`Absent` пишутся в `RequestItem.pickStatus` (`taken`/`absent`/`null`) через `PATCH /api/items/[id]`; обновление в UI оптимистичное.
+- Группировка склада идет по `storageSection` из каждого `RequestItem`, а не по `product.section`.
+- Warehouse mode компактный: 1-2 строки на товар; заголовок группы - `Department {storageSection}`. `need`/`present` размеры - плитками без `xN` (`need` акцентный, `present` контурный); рядом с кодом `color` - образец выбранного цвета.
 
 ## Текущая архитектура
 
 - Основная UI-логика: `app/page.tsx`.
-- Парсер OCR-текста: `lib/label-extractor.ts`.
+- Клиентский OCR-пайплайн: `lib/ocr.ts` (постоянный Tesseract worker, grayscale-препроцессинг, детекция штрих-кода, OCR области над ним, порядок строк-кандидатов).
+- Палитра визуального цвета: `lib/colors.ts` (ходовые цвета + `resolveColor`). Выбор хранится на клиенте, не в БД.
+- Парсер OCR-текста: `lib/label-extractor.ts` (Hall вызывает его на клиенте; `/api/label/extract` оставлен для совместимости).
 - Расчет размеров: `lib/replenishment.ts`.
 - Создание scan item: `app/api/scan/route.ts`.
+- Заявка и восстановление списка: `app/api/requests/route.ts` (создание) и `app/api/requests/[id]/route.ts` (`GET` товары, `PATCH` статус).
+- Отметка товара на складе: `app/api/items/[id]/route.ts` (`PATCH pickStatus`).
 - Warehouse view: `app/api/requests/[id]/warehouse/route.ts`.
 - Prisma schema: `prisma/schema.prisma`.
 

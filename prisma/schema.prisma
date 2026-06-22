@@ -3,8 +3,9 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 enum RequestStatus {
@@ -13,6 +14,7 @@ enum RequestStatus {
   DONE
 }
 
+/// Technical support for scanned products. Warehouse grouping uses RequestItem.storageSection.
 model Section {
   id             String    @id @default(cuid())
   name           String
@@ -32,6 +34,7 @@ model SizeSystem {
   products            Product[]
 }
 
+/// Technical record for scanned articles. This is not a merchandise catalog.
 model Product {
   id           String     @id @default(cuid())
   article      String     @unique
@@ -58,6 +61,7 @@ model RequestItem {
   productId           String
   article             String
   color               String?
+  colorName           String?
   season              String?
   storageSection      String?
   labelPhotoUrl       String?
@@ -65,6 +69,7 @@ model RequestItem {
   neededSizesQty      Json
   substitutePriority  Json
   pickedSizesQty      Json?
+  pickStatus          String?
   warehouseNote       String?
   createdAt           DateTime             @default(now())
   request             ReplenishmentRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
