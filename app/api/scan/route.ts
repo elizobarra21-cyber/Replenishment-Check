@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import {
   buildSubstitutePriority,
+  buildTargetSizes,
   computeNeededSizes,
   HALL_REQUIRED_SIZES,
   HALL_TARGET_QTY_BY_SIZE,
@@ -44,6 +45,9 @@ const scanSchema = z.object({
     .default(""),
   presentSizesQty: z.record(z.string(), z.union([z.number(), z.string()])),
   orderedSizes: z.array(z.string()).optional(),
+  sizeSystem: z.enum(["letter", "small", "large"]).optional(),
+  frontSize: z.number().int().nullable().optional(),
+  warehouseNote: z.string().trim().max(500).optional().default(""),
 });
 
 async function ensureHallSizeSystem() {
@@ -112,12 +116,17 @@ export async function POST(request: Request) {
   const product = await getOrCreateScannedProduct(parsed.data.article);
 
   const presentSizesQty = normalizeSizeQty(parsed.data.presentSizesQty);
-  // Letter sizes (XS..XL) by default, or the numeric run (34..42) detected from
-  // the label. The target is one of each size in the chosen system.
-  const orderedSizes = parsed.data.orderedSizes?.length
-    ? parsed.data.orderedSizes
-    : HALL_REQUIRED_SIZES;
-  const targetQtyBySize = Object.fromEntries(orderedSizes.map((size) => [size, 1]));
+  // Target multiset by size: from the size system + front (fronts double sizes
+  // up to their capacity), or a flat "one of each" fallback for older clients.
+  const targetQtyBySize = parsed.data.sizeSystem
+    ? buildTargetSizes(parsed.data.sizeSystem, parsed.data.frontSize ?? null)
+    : Object.fromEntries(
+        (parsed.data.orderedSizes?.length
+          ? parsed.data.orderedSizes
+          : HALL_REQUIRED_SIZES
+        ).map((size) => [size, 1]),
+      );
+  const orderedSizes = Object.keys(targetQtyBySize);
   const neededSizesQty = computeNeededSizes(
     orderedSizes,
     targetQtyBySize,
@@ -135,6 +144,9 @@ export async function POST(request: Request) {
       season: parsed.data.season || null,
       storageSection: parsed.data.storageSection || null,
       labelPhotoUrl: parsed.data.labelPhotoUrl || null,
+      sizeSystem: parsed.data.sizeSystem ?? null,
+      frontSize: parsed.data.frontSize ?? null,
+      warehouseNote: parsed.data.warehouseNote || null,
       presentSizesQty,
       neededSizesQty,
       substitutePriority,

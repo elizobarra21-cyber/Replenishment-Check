@@ -71,6 +71,8 @@ model RequestItem {
   pickedSizesQty      Json?
   pickStatus          String?
   warehouseNote       String?
+  sizeSystem          String?
+  frontSize           Int?
   createdAt           DateTime             @default(now())
   request             ReplenishmentRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
   product             Product              @relation(fields: [productId], references: [id])

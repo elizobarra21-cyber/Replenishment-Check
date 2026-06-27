@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS "RequestItem" (
   "storageSection" TEXT, "labelPhotoUrl" TEXT,
   "presentSizesQty" JSONB NOT NULL, "neededSizesQty" JSONB NOT NULL,
   "substitutePriority" JSONB NOT NULL, "pickedSizesQty" JSONB,
-  "pickStatus" TEXT, "warehouseNote" TEXT,
+  "pickStatus" TEXT, "warehouseNote" TEXT, "sizeSystem" TEXT, "frontSize" INTEGER,
   "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT "RequestItem_pkey" PRIMARY KEY ("id")
 );
