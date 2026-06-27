@@ -53,6 +53,9 @@ type RequestItem = {
   storageSection: string | null;
   labelPhotoUrl: string | null;
   pickStatus?: string | null;
+  warehouseNote?: string | null;
+  sizeSystem?: string | null;
+  frontSize?: number | null;
   presentSizesQty: SizeQtyMap;
   neededSizesQty: SizeQtyMap;
   substitutePriority: string[];
@@ -366,6 +369,8 @@ export default function Home() {
   const [entryStarted, setEntryStarted] = useState(false);
   // Size system detected from the label's EUR line.
   const [sizeSystem, setSizeSystem] = useState<"letter" | "small" | "large">("letter");
+  // Free-text comment for the current item (shown in both modes).
+  const [note, setNote] = useState("");
   // Warehouse: collapse the handled (taken/absent) items so only needed ones stand out.
   const [showDone, setShowDone] = useState(false);
 
@@ -578,6 +583,7 @@ export default function Home() {
     setError("");
     setPhotoNotice("");
     setSizeSystem("letter");
+    setNote("");
     setCurrentLabelPhotoUrl(null);
     setScannedForCurrentItem(false);
     setLastParsed(createEmptyParsedLabel());
@@ -608,6 +614,8 @@ export default function Home() {
           labelPhotoUrl: currentLabelPhotoUrl ?? "",
           presentSizesQty,
           orderedSizes: requiredSizes,
+          sizeSystem,
+          warehouseNote: note,
         }),
       });
 
@@ -626,6 +634,7 @@ export default function Home() {
       setPresentSizesQty({});
       setEntryStarted(false);
       setSizeSystem("letter");
+      setNote("");
 
       if (typeof window !== "undefined") {
         window.scrollTo({ top: 0, behavior: "smooth" });
@@ -714,6 +723,7 @@ export default function Home() {
       setScannedForCurrentItem(false);
       setEntryStarted(false);
       setSizeSystem("letter");
+      setNote("");
       setShowDone(false);
       setMode("hall");
     } catch {
@@ -1077,6 +1087,19 @@ export default function Home() {
                 </div>
               </div>
 
+              <div className="mt-3 rounded-xl border border-black/10 bg-white p-3">
+                <p className="text-xs font-semibold uppercase tracking-wider text-black/60">
+                  Comment
+                </p>
+                <input
+                  value={note}
+                  onChange={(event) => setNote(event.target.value)}
+                  maxLength={500}
+                  placeholder="Optional note"
+                  className="mt-2 w-full rounded-lg border border-black/10 bg-background px-2 py-2 text-sm text-black outline-none ring-0 focus:border-accent"
+                />
+              </div>
+
               <button
                 onClick={() => void handleAddItem()}
                 disabled={busy || !lastParsed?.article}
@@ -1139,6 +1162,11 @@ export default function Home() {
                                 {item.colorName ? (
                                   <ColorSwatch value={item.colorName} size={12} />
                                 ) : null}
+                              </p>
+                            ) : null}
+                            {item.warehouseNote ? (
+                              <p className="mt-0.5 text-xs italic text-black/50">
+                                {item.warehouseNote}
                               </p>
                             ) : null}
                           </div>
@@ -1227,6 +1255,12 @@ export default function Home() {
                               <SizeTiles map={item.presentSizesQty} variant="present" />
                             </span>
                           </div>
+
+                          {item.warehouseNote ? (
+                            <p className="mt-1 text-xs italic text-black/50">
+                              {item.warehouseNote}
+                            </p>
+                          ) : null}
 
                           <div className="mt-2 flex items-center gap-2">
                             <button
