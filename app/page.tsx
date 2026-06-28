@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { HALL_REQUIRED_SIZES } from "@/lib/replenishment";
+import {
+  HALL_REQUIRED_SIZES,
+  buildTargetSizes,
+  presentTotal,
+  targetTotal,
+  type SizeSystem,
+} from "@/lib/replenishment";
 import {
   extractArticleFromLabel,
   type LabelExtractionResult,
@@ -18,8 +24,34 @@ type SizeQtyMap = Record<string, number>;
 
 // Size systems, chosen from the label's EUR line.
 const LETTER_SIZES = HALL_REQUIRED_SIZES;
-const SMALL_NUMERIC_SIZES = ["25", "26", "27", "28", "29", "30", "31"]; // EUR 24..32
-const LARGE_NUMERIC_SIZES = ["34", "36", "38", "40", "42"]; // EUR 34..44
+// Sizes selectable in the hall (base + optional). Order matters for display.
+const SMALL_SELECTABLE = ["24", "25", "26", "27", "28", "29", "30", "31", "32"];
+const LARGE_SELECTABLE = ["34", "36", "38", "40", "42", "44"];
+
+function selectableSizesFor(system: SizeSystem): string[] {
+  if (system === "small") return SMALL_SELECTABLE;
+  if (system === "large") return LARGE_SELECTABLE;
+  return LETTER_SIZES;
+}
+
+// Best-effort size system for an already-saved item (older items may lack it).
+function itemSizeSystem(item: RequestItem): SizeSystem {
+  if (item.sizeSystem === "small" || item.sizeSystem === "large" || item.sizeSystem === "letter") {
+    return item.sizeSystem;
+  }
+  const keys = [
+    ...Object.keys(item.presentSizesQty ?? {}),
+    ...Object.keys(item.neededSizesQty ?? {}),
+  ];
+  if (keys.some((k) => /^\d+$/.test(k) && Number(k) >= 34)) return "large";
+  if (keys.some((k) => /^\d+$/.test(k) && Number(k) >= 24 && Number(k) <= 33)) return "small";
+  return "letter";
+}
+
+// Total expected to hang (Y) for a saved item.
+function itemTargetCount(item: RequestItem): number {
+  return targetTotal(buildTargetSizes(itemSizeSystem(item), item.frontSize ?? null));
+}
 
 // Order a size map for display: numeric keys sort numerically, otherwise use the
 // XS..XL order (extra keys are appended by orderedSizeKeys).
@@ -368,7 +400,9 @@ export default function Home() {
   // Entry only appears after a scan or "Type manually"; back to scanner buttons after add.
   const [entryStarted, setEntryStarted] = useState(false);
   // Size system detected from the label's EUR line.
-  const [sizeSystem, setSizeSystem] = useState<"letter" | "small" | "large">("letter");
+  const [sizeSystem, setSizeSystem] = useState<SizeSystem>("letter");
+  // Front capacity: null = not on a front, otherwise 6 or 8 garments.
+  const [frontSize, setFrontSize] = useState<number | null>(null);
   // Free-text comment for the current item (shown in both modes).
   const [note, setNote] = useState("");
   // Warehouse: collapse the handled (taken/absent) items so only needed ones stand out.
@@ -453,32 +487,35 @@ export default function Home() {
     };
   }, []);
 
-  const requiredSizes =
-    sizeSystem === "small"
-      ? SMALL_NUMERIC_SIZES
-      : sizeSystem === "large"
-        ? LARGE_NUMERIC_SIZES
-        : LETTER_SIZES;
+  const selectableSizes = selectableSizesFor(sizeSystem);
+  const targetSizes = useMemo(
+    () => buildTargetSizes(sizeSystem, frontSize),
+    [sizeSystem, frontSize],
+  );
 
   const neededPreview = useMemo(() => {
-    return requiredSizes.reduce<SizeQtyMap>((acc, size) => {
-      const current = presentSizesQty[size] ?? 0;
-      if (current < 1) {
-        acc[size] = 1 - current;
+    const acc: SizeQtyMap = {};
+    for (const [size, qty] of Object.entries(targetSizes)) {
+      const have = presentSizesQty[size] ?? 0;
+      if (have < qty) {
+        acc[size] = qty - have;
       }
-      return acc;
-    }, {});
-  }, [presentSizesQty, requiredSizes]);
+    }
+    return acc;
+  }, [targetSizes, presentSizesQty]);
 
   const presentSizeTokens = useMemo(
-    () => explodeSizeMap(presentSizesQty, requiredSizes),
-    [presentSizesQty, requiredSizes],
+    () => explodeSizeMap(presentSizesQty, selectableSizes),
+    [presentSizesQty, selectableSizes],
   );
 
   const neededSizeTokens = useMemo(
-    () => explodeSizeMap(neededPreview, requiredSizes),
-    [neededPreview, requiredSizes],
+    () => explodeSizeMap(neededPreview, selectableSizes),
+    [neededPreview, selectableSizes],
   );
+
+  const hallPresentCount = presentTotal(presentSizesQty);
+  const hallTargetCount = targetTotal(targetSizes);
 
   const hallBriefGroups = useMemo(
     () => groupItemsBySection(draftItems),
@@ -583,6 +620,7 @@ export default function Home() {
     setError("");
     setPhotoNotice("");
     setSizeSystem("letter");
+    setFrontSize(null);
     setNote("");
     setCurrentLabelPhotoUrl(null);
     setScannedForCurrentItem(false);
@@ -613,8 +651,9 @@ export default function Home() {
           storageSection: lastParsed.storageSection,
           labelPhotoUrl: currentLabelPhotoUrl ?? "",
           presentSizesQty,
-          orderedSizes: requiredSizes,
+          orderedSizes: selectableSizes,
           sizeSystem,
+          frontSize,
           warehouseNote: note,
         }),
       });
@@ -634,6 +673,7 @@ export default function Home() {
       setPresentSizesQty({});
       setEntryStarted(false);
       setSizeSystem("letter");
+      setFrontSize(null);
       setNote("");
 
       if (typeof window !== "undefined") {
@@ -723,6 +763,7 @@ export default function Home() {
       setScannedForCurrentItem(false);
       setEntryStarted(false);
       setSizeSystem("letter");
+      setFrontSize(null);
       setNote("");
       setShowDone(false);
       setMode("hall");
@@ -1019,14 +1060,48 @@ export default function Home() {
 
               <div className="mt-3 rounded-xl border border-black/10 bg-white p-3">
                 <p className="text-xs font-semibold uppercase tracking-wider text-black/60">
-                  Choose existing sizes
+                  On front
                 </p>
+                <div className="mt-2 flex gap-2">
+                  {([
+                    ["No", null],
+                    ["Front 6", 6],
+                    ["Front 8", 8],
+                  ] as const).map(([label, value]) => {
+                    const active = frontSize === value;
+                    return (
+                      <button
+                        key={label}
+                        type="button"
+                        onClick={() => setFrontSize(value)}
+                        className={`flex-1 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors active:scale-[0.98] ${
+                          active
+                            ? "border-accent bg-accent-soft text-accent"
+                            : "border-black/10 text-black/60"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="mt-3 rounded-xl border border-black/10 bg-white p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-black/60">
+                    Choose existing sizes
+                  </p>
+                  <span className="rounded-full bg-accent-soft px-2.5 py-1 text-sm font-bold text-accent">
+                    в зале {hallPresentCount} из {hallTargetCount}
+                  </span>
+                </div>
                 <div
                   className={`mt-2 grid gap-2 ${
-                    requiredSizes.length > 5 ? "grid-cols-4" : "grid-cols-5"
+                    selectableSizes.length > 5 ? "grid-cols-4" : "grid-cols-5"
                   }`}
                 >
-                  {requiredSizes.map((size) => (
+                  {selectableSizes.map((size) => (
                     <button
                       key={size}
                       type="button"
@@ -1154,6 +1229,12 @@ export default function Home() {
                               >
                                 {item.article}
                               </span>
+                              <span className="shrink-0 rounded-full bg-accent-soft px-2.5 py-0.5 text-sm font-bold text-accent">
+                                {presentTotal(item.presentSizesQty)} из {itemTargetCount(item)}
+                              </span>
+                            </div>
+                            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-black/50">
+                              <span className="uppercase tracking-wide">present</span>
                               <SizeTiles map={item.presentSizesQty} variant="present" />
                             </div>
                             {item.color || item.colorName ? (
@@ -1226,16 +1307,21 @@ export default function Home() {
                       {group.items.map((item) => (
                         <article key={item.id} className="py-2 first:pt-0 last:pb-0">
                           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-                            <button
-                              type="button"
-                              onClick={() => openScanPhoto(item)}
-                              title={item.labelPhotoUrl ? "Open scan photo" : "No scan photo saved"}
-                              className={`text-left text-sm font-semibold text-accent underline decoration-accent/40 underline-offset-4 ${
-                                item.pickStatus ? "opacity-50 line-through" : ""
-                              }`}
-                            >
-                              {item.article}
-                            </button>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => openScanPhoto(item)}
+                                title={item.labelPhotoUrl ? "Open scan photo" : "No scan photo saved"}
+                                className={`text-left text-sm font-semibold text-accent underline decoration-accent/40 underline-offset-4 ${
+                                  item.pickStatus ? "opacity-50 line-through" : ""
+                                }`}
+                              >
+                                {item.article}
+                              </button>
+                              <span className="shrink-0 rounded-full bg-accent-soft px-2 py-0.5 text-xs font-bold text-accent">
+                                {presentTotal(item.presentSizesQty)}/{itemTargetCount(item)}
+                              </span>
+                            </div>
                             <div className="flex items-center gap-1.5">
                               <span className="text-xs font-semibold uppercase tracking-wide text-accent">
                                 need
