@@ -53,6 +53,17 @@ function itemTargetCount(item: RequestItem): number {
   return targetTotal(buildTargetSizes(itemSizeSystem(item), item.frontSize ?? null));
 }
 
+// Whether to suggest size 44 as an optional (secondary) pick in the warehouse:
+// only for large, non-front items where 44 is not already present or needed.
+function showOptional44(item: RequestItem): boolean {
+  return (
+    itemSizeSystem(item) === "large" &&
+    !item.frontSize &&
+    !(Number(item.presentSizesQty?.["44"]) > 0) &&
+    !(Number(item.neededSizesQty?.["44"]) > 0)
+  );
+}
+
 // Order a size map for display: numeric keys sort numerically, otherwise use the
 // XS..XL order (extra keys are appended by orderedSizeKeys).
 function inferOrderedSizes(map: SizeQtyMap): string[] {
@@ -1327,6 +1338,14 @@ export default function Home() {
                                 need
                               </span>
                               <SizeTiles map={item.neededSizesQty} variant="need" />
+                              {showOptional44(item) ? (
+                                <span
+                                  title="Optional: bring 44 if available"
+                                  className="inline-flex min-w-7 justify-center rounded-md border border-dashed border-black/30 bg-white px-1.5 py-1 text-xs font-semibold text-black/40"
+                                >
+                                  44?
+                                </span>
+                              ) : null}
                             </div>
                           </div>
 
