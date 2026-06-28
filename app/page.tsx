@@ -13,6 +13,7 @@ import {
   type LabelExtractionResult,
 } from "@/lib/label-extractor";
 import {
+  beginScan,
   detectSizeSystem,
   readLabelCandidates,
   terminateOcr,
@@ -578,9 +579,12 @@ export default function Home() {
     setEntryStarted(true);
 
     const photoUrlPromise = createLabelPhotoUrl(file).catch(() => "");
-    const sizeSystemPromise = detectSizeSystem(file).catch(() => null);
 
     try {
+      // Recycle the OCR workers periodically (before the passes start) so the
+      // scanner does not lose accuracy over a long session.
+      await beginScan();
+      const sizeSystemPromise = detectSizeSystem(file).catch(() => null);
       const candidates = await readLabelCandidates(file);
       const detected = await sizeSystemPromise;
       setSizeSystem(detected ?? "letter");

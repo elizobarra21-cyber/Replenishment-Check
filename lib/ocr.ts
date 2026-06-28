@@ -132,6 +132,22 @@ export async function terminateOcr(): Promise<void> {
   }
 }
 
+// Tesseract workers accumulate memory across many recognitions, which made the
+// scanner less accurate after ~10 scans in a session. Recycle both workers
+// every few scans so quality stays stable. Call once at the start of each scan,
+// before the recognition passes run (so nothing is terminated mid-recognition).
+let scanCount = 0;
+const RECYCLE_EVERY = 8;
+
+export async function beginScan(): Promise<void> {
+  if (scanCount >= RECYCLE_EVERY) {
+    scanCount = 0;
+    await terminateOcr();
+    warmUpOcr(); // recreate both workers ahead of the passes
+  }
+  scanCount += 1;
+}
+
 function loadImageFromFile(file: File): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
