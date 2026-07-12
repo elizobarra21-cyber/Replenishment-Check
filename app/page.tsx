@@ -419,6 +419,14 @@ export default function Home() {
   const [note, setNote] = useState("");
   // Warehouse: collapse the handled (taken/absent) items so only needed ones stand out.
   const [showDone, setShowDone] = useState(false);
+  // Inline editing of an already-added item (expanded row).
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editArticle, setEditArticle] = useState("");
+  const [editColor, setEditColor] = useState("");
+  const [editColorName, setEditColorName] = useState("");
+  const [editSeason, setEditSeason] = useState("");
+  const [editStorage, setEditStorage] = useState("");
+  const [editPresent, setEditPresent] = useState<SizeQtyMap>({});
 
   useEffect(() => {
     const createRequest = async () => {
@@ -827,6 +835,56 @@ export default function Home() {
     }
   }
 
+  function openEdit(item: RequestItem) {
+    setError("");
+    setEditingId(item.id);
+    setEditArticle(item.article ?? "");
+    setEditColor(item.color ?? "");
+    setEditColorName(item.colorName ?? "");
+    setEditSeason(item.season ?? "");
+    setEditStorage(item.storageSection ?? "");
+    setEditPresent({ ...(item.presentSizesQty ?? {}) });
+  }
+
+  async function saveEdit(item: RequestItem) {
+    setError("");
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/items/${item.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          article: editArticle,
+          color: editColor,
+          colorName: editColorName,
+          season: editSeason,
+          storageSection: editStorage,
+          presentSizesQty: editPresent,
+          sizeSystem: itemSizeSystem(item),
+          frontSize: item.frontSize ?? null,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setError(errorMessage(json.error, "Failed to save changes"));
+        return;
+      }
+      const updated = json.item as RequestItem;
+      setDraftItems((items) => items.map((it) => (it.id === item.id ? updated : it)));
+      setWarehouseGroups((groups) =>
+        groups.map((group) => ({
+          ...group,
+          items: group.items.map((it) => (it.id === item.id ? updated : it)),
+        })),
+      );
+      setEditingId(null);
+    } catch {
+      setError("Failed to save changes");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function openScanPhoto(item: RequestItem) {
     setPhotoNotice("");
 
@@ -1231,42 +1289,188 @@ export default function Home() {
                     <div key={group.sectionId} className="rounded-xl border border-black/10 bg-white p-3">
                       <h3 className="text-base font-semibold">{group.sectionName}</h3>
                       <div className="mt-2 space-y-1.5">
-                        {group.items.map((item) => (
-                          <div
-                            key={item.id}
-                            className="rounded-lg bg-background px-3 py-2 text-sm"
-                          >
-                            <div className="flex items-center justify-between gap-3">
-                              <span
-                                className={`truncate font-semibold ${
-                                  item.pickStatus ? "text-black/40 line-through" : ""
-                                }`}
+                        {group.items.map((item) => {
+                          const editing = editingId === item.id;
+                          const editSel = selectableSizesFor(itemSizeSystem(item));
+                          const editTokens = explodeSizeMap(editPresent, editSel);
+                          return (
+                            <div key={item.id} className="rounded-lg bg-background px-3 py-2 text-sm">
+                              <button
+                                type="button"
+                                onClick={() => (editing ? setEditingId(null) : openEdit(item))}
+                                className="flex w-full items-center justify-between gap-3 text-left"
                               >
-                                {item.article}
-                              </span>
-                              <span className="shrink-0 rounded-full bg-accent-soft px-2.5 py-0.5 text-sm font-bold text-accent">
-                                {presentTotal(item.presentSizesQty)} из {itemTargetCount(item)}
-                              </span>
+                                <span
+                                  className={`truncate font-semibold ${
+                                    item.pickStatus ? "text-black/40 line-through" : ""
+                                  }`}
+                                >
+                                  {item.article}
+                                </span>
+                                <span className="shrink-0 rounded-full bg-accent-soft px-2.5 py-0.5 text-sm font-bold text-accent">
+                                  {presentTotal(item.presentSizesQty)} из {itemTargetCount(item)}
+                                </span>
+                              </button>
+
+                              {editing ? (
+                                <div className="mt-2 space-y-2">
+                                  <div className="grid grid-cols-3 gap-2">
+                                    <label className="text-[11px] font-semibold uppercase tracking-wide text-black/50">
+                                      article
+                                      <input
+                                        value={editArticle}
+                                        inputMode="numeric"
+                                        maxLength={7}
+                                        onChange={(e) => setEditArticle(e.target.value.replace(/\D/g, "").slice(0, 7))}
+                                        className="mt-1 w-full rounded-lg border border-black/10 bg-white px-2 py-1.5 text-sm font-semibold outline-none focus:border-accent"
+                                      />
+                                    </label>
+                                    <label className="text-[11px] font-semibold uppercase tracking-wide text-black/50">
+                                      season
+                                      <input
+                                        value={editSeason}
+                                        inputMode="numeric"
+                                        maxLength={1}
+                                        onChange={(e) => setEditSeason(e.target.value.replace(/\D/g, "").slice(0, 1))}
+                                        className="mt-1 w-full rounded-lg border border-black/10 bg-white px-2 py-1.5 text-sm font-semibold outline-none focus:border-accent"
+                                      />
+                                    </label>
+                                    <label className="text-[11px] font-semibold uppercase tracking-wide text-black/50">
+                                      dept
+                                      <input
+                                        value={editStorage}
+                                        inputMode="numeric"
+                                        maxLength={4}
+                                        onChange={(e) => setEditStorage(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                                        className="mt-1 w-full rounded-lg border border-black/10 bg-white px-2 py-1.5 text-sm font-semibold outline-none focus:border-accent"
+                                      />
+                                    </label>
+                                  </div>
+
+                                  <div className="text-[11px] font-semibold uppercase tracking-wide text-black/50">
+                                    color
+                                    <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                                      <input
+                                        value={editColor}
+                                        inputMode="numeric"
+                                        maxLength={3}
+                                        aria-label="color code"
+                                        onChange={(e) => setEditColor(e.target.value.replace(/\D/g, "").slice(0, 3))}
+                                        className="w-14 rounded-lg border border-black/10 bg-white px-2 py-1.5 text-sm font-semibold outline-none focus:border-accent"
+                                      />
+                                      {COMMON_COLORS.map((sw) => {
+                                        const sel = editColorName.toLowerCase() === sw.name;
+                                        return (
+                                          <button
+                                            key={sw.name}
+                                            type="button"
+                                            onClick={() => setEditColorName(sel ? "" : sw.name)}
+                                            aria-label={sw.label}
+                                            title={sw.label}
+                                            className={`h-6 w-6 rounded-full border ${
+                                              sel ? "border-accent ring-2 ring-accent/40 ring-offset-1" : "border-black/15"
+                                            }`}
+                                            style={{ backgroundColor: sw.hex }}
+                                          />
+                                        );
+                                      })}
+                                      {editColorName ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => setEditColorName("")}
+                                          aria-label="Clear color"
+                                          className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-black/15 text-sm leading-none text-black/45"
+                                        >
+                                          ×
+                                        </button>
+                                      ) : null}
+                                    </div>
+                                  </div>
+
+                                  <div className="text-[11px] font-semibold uppercase tracking-wide text-black/50">
+                                    sizes
+                                    <div
+                                      className={`mt-1 grid gap-1.5 ${
+                                        editSel.length > 5 ? "grid-cols-4" : "grid-cols-5"
+                                      }`}
+                                    >
+                                      {editSel.map((size) => (
+                                        <button
+                                          key={size}
+                                          type="button"
+                                          onClick={() =>
+                                            setEditPresent((p) => ({ ...p, [size]: (p[size] ?? 0) + 1 }))
+                                          }
+                                          className="min-h-10 rounded-lg border border-accent bg-accent-soft px-1 py-1.5 text-center text-xs font-semibold text-accent active:scale-[0.97]"
+                                        >
+                                          {size}
+                                        </button>
+                                      ))}
+                                    </div>
+                                    <div className="mt-1.5 flex min-h-6 flex-wrap gap-1">
+                                      {editTokens.length ? (
+                                        editTokens.map((token, i) => (
+                                          <button
+                                            key={`${token}-${i}`}
+                                            type="button"
+                                            title="Remove one"
+                                            onClick={() =>
+                                              setEditPresent((p) => ({
+                                                ...p,
+                                                [token]: Math.max(0, (p[token] ?? 0) - 1),
+                                              }))
+                                            }
+                                            className="rounded-md bg-white px-2 py-1 text-xs font-semibold active:scale-[0.97]"
+                                          >
+                                            {token}
+                                          </button>
+                                        ))
+                                      ) : (
+                                        <span className="text-xs text-black/40">-</span>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  <div className="flex gap-2 pt-1">
+                                    <button
+                                      type="button"
+                                      disabled={busy || !editArticle}
+                                      onClick={() => void saveEdit(item)}
+                                      className="flex-1 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                                    >
+                                      Save
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => setEditingId(null)}
+                                      className="rounded-lg border border-black/10 bg-white px-3 py-2 text-sm font-semibold text-black/60"
+                                    >
+                                      Cancel
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <>
+                                  <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-black/50">
+                                    <span className="uppercase tracking-wide">present</span>
+                                    <SizeTiles map={item.presentSizesQty} variant="present" />
+                                  </div>
+                                  {item.color || item.colorName ? (
+                                    <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-black/55">
+                                      <span>color {formatLabelPart(item.color)}</span>
+                                      {item.colorName ? <ColorSwatch value={item.colorName} size={12} /> : null}
+                                    </p>
+                                  ) : null}
+                                  {item.warehouseNote ? (
+                                    <p className="mt-0.5 text-xs italic text-black/50">
+                                      {item.warehouseNote}
+                                    </p>
+                                  ) : null}
+                                </>
+                              )}
                             </div>
-                            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-black/50">
-                              <span className="uppercase tracking-wide">present</span>
-                              <SizeTiles map={item.presentSizesQty} variant="present" />
-                            </div>
-                            {item.color || item.colorName ? (
-                              <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-black/55">
-                                <span>color {formatLabelPart(item.color)}</span>
-                                {item.colorName ? (
-                                  <ColorSwatch value={item.colorName} size={12} />
-                                ) : null}
-                              </p>
-                            ) : null}
-                            {item.warehouseNote ? (
-                              <p className="mt-0.5 text-xs italic text-black/50">
-                                {item.warehouseNote}
-                              </p>
-                            ) : null}
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   ))}
