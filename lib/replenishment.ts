@@ -69,51 +69,181 @@ export function formatSizeQty(map: SizeQtyMap): string {
 
 // --- Size systems and front targets -----------------------------------------
 
-export type SizeSystem = "letter" | "small" | "large";
+// Six systems: three categories (letter / small=jeans / large=numeric), each in
+// women's (default) and men's variants. Men's items are those whose department
+// code starts with 45 (see isMenSection). Older stored items only ever use the
+// women's names ("letter" / "small" / "large"), which stay valid here.
+export type SizeSystem =
+  | "letter"
+  | "small"
+  | "large"
+  | "men-letter"
+  | "men-small"
+  | "men-large";
 
-export const LETTER_SIZES = ["XS", "S", "M", "L", "XL"];
-export const SMALL_SIZES = ["25", "26", "27", "28", "29", "30", "31"];
-export const LARGE_SIZES = ["34", "36", "38", "40", "42"];
-export const SMALL_OPTIONAL_SIZES = ["24", "32"]; // only if in stock
-export const LARGE_OPTIONAL_SIZES = ["44"]; // optional unless the item is a front
+export type SizeCategory = "letter" | "small" | "large";
+export type Gender = "women" | "men";
 
-export function baseSizesFor(system: SizeSystem): string[] {
-  if (system === "small") return SMALL_SIZES;
-  if (system === "large") return LARGE_SIZES;
-  return LETTER_SIZES;
+export const ALL_SIZE_SYSTEMS: SizeSystem[] = [
+  "letter",
+  "small",
+  "large",
+  "men-letter",
+  "men-small",
+  "men-large",
+];
+
+type SizeConfig = {
+  // Counted toward the target (Y in the "X of Y" indicator).
+  mandatory: string[];
+  // Selectable and (on the warehouse list) suggested only if in stock; never
+  // counted toward the target for a regular item.
+  optional: string[];
+  // Sizes doubled first when filling a front to its capacity.
+  doublePref: string[];
+};
+
+const SIZE_CONFIGS: Record<SizeSystem, SizeConfig> = {
+  letter: {
+    mandatory: ["XS", "S", "M", "L", "XL"],
+    optional: [],
+    doublePref: ["S", "M", "L"],
+  },
+  small: {
+    mandatory: ["25", "26", "27", "28", "29", "30", "31"],
+    optional: ["24", "32"],
+    doublePref: ["25", "26", "27", "28", "29", "30", "31"],
+  },
+  large: {
+    mandatory: ["34", "36", "38", "40", "42"],
+    optional: ["44"],
+    doublePref: ["36", "38", "40", "42", "34", "44"],
+  },
+  "men-letter": {
+    mandatory: ["S", "M", "L", "XL"],
+    optional: ["XS"],
+    doublePref: ["S", "M", "L"],
+  },
+  "men-small": {
+    mandatory: ["29", "30", "31", "32", "33"],
+    optional: ["28", "34"],
+    doublePref: ["29", "30", "31", "32", "33"],
+  },
+  "men-large": {
+    mandatory: ["46", "48", "50", "52"],
+    optional: ["44", "54"],
+    doublePref: ["48", "50", "46", "52", "44", "54"],
+  },
+};
+
+const LETTER_ORDER = ["XS", "S", "M", "L", "XL"];
+
+function configFor(system: SizeSystem): SizeConfig {
+  return SIZE_CONFIGS[system] ?? SIZE_CONFIGS.letter;
 }
 
-// Sizes preferred for doubling when filling a front to its capacity.
-function doublePrefFor(system: SizeSystem): string[] {
-  if (system === "letter") return ["S", "M", "L"];
-  if (system === "large") return ["36", "38", "40", "42", "34", "44"];
-  return SMALL_SIZES;
+// Backward-compatible aliases (women's systems keep their original names).
+export const LETTER_SIZES = SIZE_CONFIGS.letter.mandatory;
+export const SMALL_SIZES = SIZE_CONFIGS.small.mandatory;
+export const LARGE_SIZES = SIZE_CONFIGS.large.mandatory;
+
+export function baseSizesFor(system: SizeSystem): string[] {
+  return configFor(system).mandatory;
+}
+
+export function optionalSizesFor(system: SizeSystem): string[] {
+  return configFor(system).optional;
+}
+
+function orderSizes(sizes: string[]): string[] {
+  const unique = Array.from(new Set(sizes));
+  if (unique.length > 0 && unique.every((s) => /^\d+$/.test(s))) {
+    return unique.sort((a, b) => Number(a) - Number(b));
+  }
+  return unique.sort((a, b) => {
+    const ia = LETTER_ORDER.indexOf(a);
+    const ib = LETTER_ORDER.indexOf(b);
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib);
+  });
+}
+
+// Sizes selectable in the hall (mandatory + optional), in display order.
+export function selectableSizesFor(system: SizeSystem): string[] {
+  const cfg = configFor(system);
+  return orderSizes([...cfg.mandatory, ...cfg.optional]);
+}
+
+// --- Gender / category helpers ----------------------------------------------
+
+export function genderOf(system: SizeSystem): Gender {
+  return system.startsWith("men-") ? "men" : "women";
+}
+
+export function categoryOf(system: SizeSystem): SizeCategory {
+  return system.replace("men-", "") as SizeCategory;
+}
+
+export function sizeSystemFromParts(
+  gender: Gender,
+  category: SizeCategory,
+): SizeSystem {
+  return (gender === "men" ? `men-${category}` : category) as SizeSystem;
+}
+
+// Department codes starting with 45 mark men's merchandise.
+export function isMenSection(storageSection: string | null | undefined): boolean {
+  return /^\s*45/.test(storageSection ?? "");
+}
+
+// Raw size token read from the label's EUR line (letter vs a number).
+export type SizeDetection = { kind: "letter" } | { kind: "number"; value: number };
+
+// Combine the label's EUR token (letters vs a numeric size) with the department
+// (men's if it starts with 45) to pick the concrete size system.
+export function resolveSizeSystem(
+  detection: SizeDetection | null,
+  storageSection: string | null | undefined,
+): SizeSystem | null {
+  if (!detection) return null;
+  const men = isMenSection(storageSection);
+  if (detection.kind === "letter") {
+    return men ? "men-letter" : "letter";
+  }
+  const n = detection.value;
+  if (men) {
+    if (n >= 28 && n <= 34) return "men-small";
+    if (n >= 44 && n <= 54) return "men-large";
+    return null;
+  }
+  if (n >= 24 && n <= 32) return "small";
+  if (n >= 34 && n <= 44) return "large";
+  return null;
 }
 
 // Target multiset (size -> required quantity) for an item.
-// Regular item: one of each base size. Front: filled/trimmed to the front
-// capacity (6 or 8), doubling the preferred sizes (large fronts include 44).
+// Regular item: one of each mandatory size. Front: a display rack that also
+// includes the optional sizes, filled/trimmed to the front capacity (6 or 8),
+// doubling the preferred sizes.
 export function buildTargetSizes(
   system: SizeSystem,
   frontSize: number | null | undefined,
 ): SizeQtyMap {
-  const base = baseSizesFor(system);
+  const cfg = configFor(system);
+  const base = frontSize ? [...cfg.mandatory, ...cfg.optional] : cfg.mandatory;
   const target: SizeQtyMap = {};
   for (const size of base) {
     target[size] = 1;
-  }
-  if (frontSize && system === "large") {
-    target["44"] = 1;
   }
   if (!frontSize) {
     return target;
   }
 
-  let total = Object.values(target).reduce((sum, qty) => sum + qty, 0);
+  const ordered = orderSizes(base);
+  let total = ordered.length;
 
   if (total > frontSize) {
-    // Trim down to capacity (e.g. small front of 6) by dropping the largest sizes.
-    const order = [...base].reverse();
+    // Trim down to capacity (e.g. a front of 6) by dropping the largest sizes.
+    const order = [...ordered].reverse();
     let i = 0;
     while (total > frontSize && i < order.length * 4) {
       const size = order[i % order.length];
@@ -129,7 +259,7 @@ export function buildTargetSizes(
     return target;
   }
 
-  const pref = doublePrefFor(system);
+  const pref = cfg.doublePref;
   let i = 0;
   while (total < frontSize && pref.length > 0) {
     const size = pref[i % pref.length];

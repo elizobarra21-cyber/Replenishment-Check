@@ -3,9 +3,18 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   HALL_REQUIRED_SIZES,
+  ALL_SIZE_SYSTEMS,
   buildTargetSizes,
+  categoryOf,
+  genderOf,
+  optionalSizesFor,
   presentTotal,
+  resolveSizeSystem,
+  selectableSizesFor,
+  sizeSystemFromParts,
   targetTotal,
+  type Gender,
+  type SizeCategory,
   type SizeSystem,
 } from "@/lib/replenishment";
 import {
@@ -14,7 +23,7 @@ import {
 } from "@/lib/label-extractor";
 import {
   beginScan,
-  detectSizeSystem,
+  detectSizeToken,
   readLabelCandidates,
   terminateOcr,
   warmUpOcr,
@@ -23,22 +32,19 @@ import { COMMON_COLORS, isHexColor, resolveColor } from "@/lib/colors";
 
 type SizeQtyMap = Record<string, number>;
 
-// Size systems, chosen from the label's EUR line.
 const LETTER_SIZES = HALL_REQUIRED_SIZES;
-// Sizes selectable in the hall (base + optional). Order matters for display.
-const SMALL_SELECTABLE = ["24", "25", "26", "27", "28", "29", "30", "31", "32"];
-const LARGE_SELECTABLE = ["34", "36", "38", "40", "42", "44"];
 
-function selectableSizesFor(system: SizeSystem): string[] {
-  if (system === "small") return SMALL_SELECTABLE;
-  if (system === "large") return LARGE_SELECTABLE;
-  return LETTER_SIZES;
-}
+// Labels for the manual size-grid picker.
+const CATEGORY_LABELS: Array<{ value: SizeCategory; label: string }> = [
+  { value: "letter", label: "Letter" },
+  { value: "small", label: "Jeans" },
+  { value: "large", label: "Numeric" },
+];
 
 // Best-effort size system for an already-saved item (older items may lack it).
 function itemSizeSystem(item: RequestItem): SizeSystem {
-  if (item.sizeSystem === "small" || item.sizeSystem === "large" || item.sizeSystem === "letter") {
-    return item.sizeSystem;
+  if (item.sizeSystem && ALL_SIZE_SYSTEMS.includes(item.sizeSystem as SizeSystem)) {
+    return item.sizeSystem as SizeSystem;
   }
   const keys = [
     ...Object.keys(item.presentSizesQty ?? {}),
@@ -54,14 +60,14 @@ function itemTargetCount(item: RequestItem): number {
   return targetTotal(buildTargetSizes(itemSizeSystem(item), item.frontSize ?? null));
 }
 
-// Whether to suggest size 44 as an optional (secondary) pick in the warehouse:
-// only for large, non-front items where 44 is not already present or needed.
-function showOptional44(item: RequestItem): boolean {
-  return (
-    itemSizeSystem(item) === "large" &&
-    !item.frontSize &&
-    !(Number(item.presentSizesQty?.["44"]) > 0) &&
-    !(Number(item.neededSizesQty?.["44"]) > 0)
+// Optional (secondary) sizes to suggest in the warehouse for a non-front item:
+// the system's optional set, minus anything already present or needed.
+function optionalHintSizes(item: RequestItem): string[] {
+  if (item.frontSize) return [];
+  return optionalSizesFor(itemSizeSystem(item)).filter(
+    (size) =>
+      !(Number(item.presentSizesQty?.[size]) > 0) &&
+      !(Number(item.neededSizesQty?.[size]) > 0),
   );
 }
 
@@ -169,14 +175,14 @@ function compareRequestItems(a: RequestItem, b: RequestItem) {
     return storageDelta;
   }
 
-  const articleDelta = compareLabelField(a.article, b.article);
-  if (articleDelta !== 0) {
-    return articleDelta;
-  }
-
   const seasonDelta = compareLabelField(a.season, b.season);
   if (seasonDelta !== 0) {
     return seasonDelta;
+  }
+
+  const articleDelta = compareLabelField(a.article, b.article);
+  if (articleDelta !== 0) {
+    return articleDelta;
   }
 
   return compareLabelField(a.color, b.color);
@@ -337,6 +343,56 @@ function SizeTiles({
   );
 }
 
+// Manual size-grid override: gender (Women/Men) + category (Letter/Jeans/Numeric).
+function SizeGridPicker({
+  system,
+  onChange,
+  compact = false,
+}: {
+  system: SizeSystem;
+  onChange: (next: SizeSystem) => void;
+  compact?: boolean;
+}) {
+  const gender = genderOf(system);
+  const category = categoryOf(system);
+  const btn = (active: boolean) =>
+    `flex-1 rounded-lg border px-2 py-1.5 font-semibold transition-colors active:scale-[0.98] ${
+      compact ? "text-xs" : "text-sm"
+    } ${
+      active
+        ? "border-accent bg-accent-soft text-accent"
+        : "border-black/10 text-black/60"
+    }`;
+  return (
+    <div className="space-y-1.5">
+      <div className="flex gap-1.5">
+        {(["women", "men"] as Gender[]).map((g) => (
+          <button
+            key={g}
+            type="button"
+            onClick={() => onChange(sizeSystemFromParts(g, category))}
+            className={btn(gender === g)}
+          >
+            {g === "women" ? "Women" : "Men"}
+          </button>
+        ))}
+      </div>
+      <div className="flex gap-1.5">
+        {CATEGORY_LABELS.map((c) => (
+          <button
+            key={c.value}
+            type="button"
+            onClick={() => onChange(sizeSystemFromParts(gender, c.value))}
+            className={btn(category === c.value)}
+          >
+            {c.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function composeParsedRawLine(parsed: ParsedLabel) {
   return [
     parsed.article,
@@ -427,6 +483,7 @@ export default function Home() {
   const [editSeason, setEditSeason] = useState("");
   const [editStorage, setEditStorage] = useState("");
   const [editPresent, setEditPresent] = useState<SizeQtyMap>({});
+  const [editSystem, setEditSystem] = useState<SizeSystem>("letter");
 
   useEffect(() => {
     const createRequest = async () => {
@@ -586,16 +643,26 @@ export default function Home() {
     setScanBusy(true);
     setEntryStarted(true);
 
+    // A new photo starts a fresh item: wipe anything entered for the previous,
+    // not-yet-added item (sizes, color, front, comment, detected size grid).
+    setPresentSizesQty({});
+    setColorValue("");
+    setFrontSize(null);
+    setNote("");
+    setSizeSystem("letter");
+    setLastParsed(null);
+    setCurrentLabelPhotoUrl(null);
+    setScannedForCurrentItem(false);
+    setEditingId(null);
+
     const photoUrlPromise = createLabelPhotoUrl(file).catch(() => "");
 
     try {
       // Recycle the OCR workers periodically (before the passes start) so the
       // scanner does not lose accuracy over a long session.
       await beginScan();
-      const sizeSystemPromise = detectSizeSystem(file).catch(() => null);
+      const detectionPromise = detectSizeToken(file).catch(() => null);
       const candidates = await readLabelCandidates(file);
-      const detected = await sizeSystemPromise;
-      setSizeSystem(detected ?? "letter");
 
       let extracted: LabelExtractionResult | null = null;
       let articleOnly: LabelExtractionResult | null = null;
@@ -618,6 +685,12 @@ export default function Home() {
         setError("Could not find the label code above barcode. Try another angle.");
         return;
       }
+
+      // Pick the size system from the EUR token + the department (men's if the
+      // department code starts with 45).
+      const detection = await detectionPromise;
+      const dept = extracted.parsed?.storageSection ?? "";
+      setSizeSystem(resolveSizeSystem(detection, dept) ?? "letter");
 
       const photoUrl = await photoUrlPromise;
       setCurrentLabelPhotoUrl(photoUrl || null);
@@ -844,6 +917,7 @@ export default function Home() {
     setEditSeason(item.season ?? "");
     setEditStorage(item.storageSection ?? "");
     setEditPresent({ ...(item.presentSizesQty ?? {}) });
+    setEditSystem(itemSizeSystem(item));
   }
 
   async function saveEdit(item: RequestItem) {
@@ -860,7 +934,7 @@ export default function Home() {
           season: editSeason,
           storageSection: editStorage,
           presentSizesQty: editPresent,
-          sizeSystem: itemSizeSystem(item),
+          sizeSystem: editSystem,
           frontSize: item.frontSize ?? null,
         }),
       });
@@ -1161,6 +1235,15 @@ export default function Home() {
               </div>
 
               <div className="mt-3 rounded-xl border border-black/10 bg-white p-3">
+                <p className="text-xs font-semibold uppercase tracking-wider text-black/60">
+                  Size grid
+                </p>
+                <div className="mt-2">
+                  <SizeGridPicker system={sizeSystem} onChange={setSizeSystem} />
+                </div>
+              </div>
+
+              <div className="mt-3 rounded-xl border border-black/10 bg-white p-3">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-xs font-semibold uppercase tracking-wider text-black/60">
                     Choose existing sizes
@@ -1284,14 +1367,22 @@ export default function Home() {
               {hallBriefGroups.length === 0 ? (
                 <p className="text-sm text-black/60">No items added yet.</p>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-5">
                   {hallBriefGroups.map((group) => (
-                    <div key={group.sectionId} className="rounded-xl border border-black/10 bg-white p-3">
-                      <h3 className="text-base font-semibold">{group.sectionName}</h3>
+                    <div
+                      key={group.sectionId}
+                      className="overflow-hidden rounded-xl border-2 border-accent/25 bg-white p-3 shadow-sm"
+                    >
+                      <h3 className="-mx-3 -mt-3 mb-3 flex items-center gap-2 rounded-t-xl bg-accent px-3 py-2.5 text-base font-bold uppercase tracking-wide text-white">
+                        {group.sectionName}
+                        <span className="ml-auto rounded-full bg-white/20 px-2 py-0.5 text-xs font-bold">
+                          {group.items.length}
+                        </span>
+                      </h3>
                       <div className="mt-2 space-y-1.5">
                         {group.items.map((item) => {
                           const editing = editingId === item.id;
-                          const editSel = selectableSizesFor(itemSizeSystem(item));
+                          const editSel = selectableSizesFor(editSystem);
                           const editTokens = explodeSizeMap(editPresent, editSel);
                           return (
                             <div key={item.id} className="rounded-lg bg-background px-3 py-2 text-sm">
@@ -1384,6 +1475,17 @@ export default function Home() {
                                           ×
                                         </button>
                                       ) : null}
+                                    </div>
+                                  </div>
+
+                                  <div className="text-[11px] font-semibold uppercase tracking-wide text-black/50">
+                                    grid
+                                    <div className="mt-1">
+                                      <SizeGridPicker
+                                        system={editSystem}
+                                        onChange={setEditSystem}
+                                        compact
+                                      />
                                     </div>
                                   </div>
 
@@ -1484,7 +1586,7 @@ export default function Home() {
               <div>
                 <h2 className="text-xl font-semibold">Warehouse mode</h2>
                 <p className="mt-1 text-sm text-black/60">
-                  Grouped by department. Sorted by article, season, color.
+                  Grouped by department. Sorted by season, article, color.
                 </p>
               </div>
               <button
@@ -1518,10 +1620,18 @@ export default function Home() {
                 All items handled. See the list below or finish.
               </p>
             ) : (
-              <div className="space-y-3">
+              <div className="space-y-5">
                 {warehouseActiveGroups.map((group) => (
-                  <div key={group.sectionId} className="rounded-xl border border-black/10 bg-white p-3">
-                    <h3 className="text-sm font-semibold">{group.sectionName}</h3>
+                  <div
+                    key={group.sectionId}
+                    className="overflow-hidden rounded-xl border-2 border-accent/25 bg-white p-3 shadow-sm"
+                  >
+                    <h3 className="-mx-3 -mt-3 mb-2 flex items-center gap-2 rounded-t-xl bg-accent px-3 py-2.5 text-base font-bold uppercase tracking-wide text-white">
+                      {group.sectionName}
+                      <span className="ml-auto rounded-full bg-white/20 px-2 py-0.5 text-xs font-bold">
+                        {group.items.length}
+                      </span>
+                    </h3>
                     <div className="mt-1.5 divide-y divide-black/5">
                       {group.items.map((item) => (
                         <article key={item.id} className="py-2 first:pt-0 last:pb-0">
@@ -1546,14 +1656,15 @@ export default function Home() {
                                 need
                               </span>
                               <SizeTiles map={item.neededSizesQty} variant="need" />
-                              {showOptional44(item) ? (
+                              {optionalHintSizes(item).map((size) => (
                                 <span
-                                  title="Optional: bring 44 if available"
+                                  key={`opt-${size}`}
+                                  title={`Optional: bring ${size} if available`}
                                   className="inline-flex min-w-7 justify-center rounded-md border border-dashed border-black/30 bg-white px-1.5 py-1 text-xs font-semibold text-black/40"
                                 >
-                                  44?
+                                  {size}?
                                 </span>
-                              ) : null}
+                              ))}
                             </div>
                           </div>
 

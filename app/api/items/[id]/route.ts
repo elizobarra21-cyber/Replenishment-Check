@@ -21,7 +21,9 @@ const updateItemSchema = z.object({
   season: z.string().trim().max(32).optional(),
   storageSection: z.string().trim().max(32).optional(),
   warehouseNote: z.string().trim().max(500).optional(),
-  sizeSystem: z.enum(["letter", "small", "large"]).optional(),
+  sizeSystem: z
+    .enum(["letter", "small", "large", "men-letter", "men-small", "men-large"])
+    .optional(),
   frontSize: z.number().int().nullable().optional(),
   presentSizesQty: z
     .record(z.string(), z.union([z.number(), z.string()]))

@@ -66,14 +66,14 @@ export async function GET(
       return storageDelta;
     }
 
-    const articleDelta = compareLabelField(a.article, b.article);
-    if (articleDelta !== 0) {
-      return articleDelta;
-    }
-
     const seasonDelta = compareLabelField(a.season, b.season);
     if (seasonDelta !== 0) {
       return seasonDelta;
+    }
+
+    const articleDelta = compareLabelField(a.article, b.article);
+    if (articleDelta !== 0) {
+      return articleDelta;
     }
 
     return compareLabelField(a.color, b.color);
@@ -107,6 +107,6 @@ export async function GET(
   return NextResponse.json({
     request: requestData,
     grouped,
-    sortOrder: ["storageSection", "article", "season", "color"],
+    sortOrder: ["storageSection", "season", "article", "color"],
   });
 }

@@ -399,17 +399,18 @@ export async function readLabelCandidates(file: File): Promise<string[]> {
   return candidates;
 }
 
-export type SizeSystem = "letter" | "small" | "large";
+// Raw size token from the label's EUR line. The caller combines this with the
+// department (men's if it starts with 45) to pick the concrete size system.
+export type SizeDetection = { kind: "letter" } | { kind: "number"; value: number };
 
 /**
- * Detect the garment size system from the label by reading the line that
+ * Detect the garment size token from the label by reading the line that
  * contains "EUR":
- *   - numeric 24..32 -> "small" (sizes 25..31)
- *   - numeric 34..44 -> "large" (sizes 34,36,38,40,42)
- *   - letters XS/S/M/L/XL -> "letter"
+ *   - a numeric size in the 20..58 range -> { kind: "number", value }
+ *   - letters XS/S/M/L/XL -> { kind: "letter" }
  * Returns null if nothing is recognized.
  */
-export async function detectSizeSystem(file: File): Promise<SizeSystem | null> {
+export async function detectSizeToken(file: File): Promise<SizeDetection | null> {
   try {
     const worker = await getTextWorker();
     const { canvas } = await prepareScan(file);
@@ -422,14 +423,16 @@ export async function detectSizeSystem(file: File): Promise<SizeSystem | null> {
       }
       // Drop the EUR token; the size sits on the same line.
       const rest = upper.replace(/\bEUR?\b/g, " ");
-      if (/(?:^|\D)(2[4-9]|3[0-2])(?:\D|$)/.test(rest)) {
-        return "small";
-      }
-      if (/(?:^|\D)(3[4-9]|4[0-4])(?:\D|$)/.test(rest)) {
-        return "large";
+      // A plausible garment size number (women 24..44, men 28..54).
+      const numbers = rest.match(/\d{2}/g) ?? [];
+      for (const raw of numbers) {
+        const value = Number(raw);
+        if (value >= 20 && value <= 58) {
+          return { kind: "number", value };
+        }
       }
       if (/\b(XS|S|M|L|XL)\b/.test(rest)) {
-        return "letter";
+        return { kind: "letter" };
       }
     }
     return null;

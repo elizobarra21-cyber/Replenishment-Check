@@ -45,7 +45,9 @@ const scanSchema = z.object({
     .default(""),
   presentSizesQty: z.record(z.string(), z.union([z.number(), z.string()])),
   orderedSizes: z.array(z.string()).optional(),
-  sizeSystem: z.enum(["letter", "small", "large"]).optional(),
+  sizeSystem: z
+    .enum(["letter", "small", "large", "men-letter", "men-small", "men-large"])
+    .optional(),
   frontSize: z.number().int().nullable().optional(),
   warehouseNote: z.string().trim().max(500).optional().default(""),
 });
