@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
+import dynamic from "next/dynamic";
 import {
   HALL_REQUIRED_SIZES,
   ALL_SIZE_SYSTEMS,
@@ -29,6 +30,11 @@ import {
   warmUpOcr,
 } from "@/lib/ocr";
 import { COMMON_COLORS, isHexColor, resolveColor } from "@/lib/colors";
+
+// Client-only live camera scanner; kept out of the initial bundle.
+const LiveScanner = dynamic(() => import("./components/LiveScanner"), {
+  ssr: false,
+});
 
 type SizeQtyMap = Record<string, number>;
 
@@ -494,6 +500,8 @@ export default function Home() {
   // Finish confirmation modal + "send report" choice (report emailing is #5).
   const [showFinishModal, setShowFinishModal] = useState(false);
   const [sendReport, setSendReport] = useState(false);
+  // Live camera scanner overlay.
+  const [showLive, setShowLive] = useState(false);
   // Inline editing of an already-added item (expanded row).
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editArticle, setEditArticle] = useState("");
@@ -729,6 +737,11 @@ export default function Home() {
     setEntryStarted(false);
     setLastParsed(null);
     setMode("hall");
+  }
+
+  function handleLiveCapture(file: File) {
+    setShowLive(false);
+    void handleScanLabel(file);
   }
 
   async function handleScanLabel(file: File | null) {
@@ -1180,6 +1193,10 @@ export default function Home() {
         </div>
       ) : null}
 
+      {showLive ? (
+        <LiveScanner onCapture={handleLiveCapture} onClose={() => setShowLive(false)} />
+      ) : null}
+
       {showFinishModal ? (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
@@ -1313,24 +1330,32 @@ export default function Home() {
               </div>
 
               <div className="rounded-xl border border-black/10 bg-white p-3">
-                <label className="flex w-full cursor-pointer items-center justify-center rounded-xl bg-accent px-4 py-4 text-base font-semibold text-white active:scale-[0.99]">
-                  {scanBusy ? "Scanning..." : "Scan from camera"}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    capture="environment"
-                    className="hidden"
-                    disabled={scanBusy}
-                    onChange={(event) => {
-                      const file = event.target.files?.[0] ?? null;
-                      void handleScanLabel(file);
-                      event.currentTarget.value = "";
-                    }}
-                  />
-                </label>
-                <div className="mt-2 flex items-center justify-center gap-5 text-xs font-semibold text-black/45">
+                <button
+                  type="button"
+                  disabled={scanBusy}
+                  onClick={() => setShowLive(true)}
+                  className="flex w-full items-center justify-center rounded-xl bg-accent px-4 py-4 text-base font-semibold text-white active:scale-[0.99] disabled:opacity-60"
+                >
+                  {scanBusy ? "Scanning..." : "Live scan"}
+                </button>
+                <div className="mt-2 flex flex-wrap items-center justify-center gap-x-5 gap-y-1 text-xs font-semibold text-black/45">
                   <label className="cursor-pointer underline underline-offset-2 hover:text-black/70">
-                    {scanBusy ? "..." : "Scan from gallery"}
+                    {scanBusy ? "..." : "Scan photo"}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      className="hidden"
+                      disabled={scanBusy}
+                      onChange={(event) => {
+                        const file = event.target.files?.[0] ?? null;
+                        void handleScanLabel(file);
+                        event.currentTarget.value = "";
+                      }}
+                    />
+                  </label>
+                  <label className="cursor-pointer underline underline-offset-2 hover:text-black/70">
+                    {scanBusy ? "..." : "Gallery"}
                     <input
                       type="file"
                       accept="image/*"
