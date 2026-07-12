@@ -2,6 +2,18 @@
 
 Формат: новая запись сверху. После каждой итерации фиксировать, что изменилось и почему.
 
+## 2026-07-12 - Пользователи/сессии + PDF-отчёт (TASKS 2026-07-12 пп. 2,5)
+
+**п.2 Пользователи и сессии (саморегистрация).**
+- Prisma: модель `User` (username @unique, passwordHash), `ReplenishmentRequest.userId` → связь сессий с пользователем; `RequestItem.imageUrl` (задел под п.7). DDL применён к Frankfurt-БД, `supabase/schema.sql` синхронизирован.
+- `lib/auth.ts`: хеш паролей scrypt (`salt:hash`, `timingSafeEqual`), stateless подписанная cookie HMAC-SHA256 (`SESSION_SECRET`, TTL 30 дней), httpOnly/SameSite=Lax/Secure.
+- Роуты: `POST /api/auth/register|login`, `POST /api/auth/logout`, `GET /api/auth/me`. `GET /api/requests` теперь отдаёт сессии текущего пользователя; `POST /api/requests` привязывает `userId`+`createdBy=username`. Запись (`/api/scan`, `PATCH /api/items/[id]`) требует сессию (401 без неё).
+- UI: экран входа с переключателем Sign in / Sign up (гейт до входа), в шапке — `@username`, «Log out», сворачиваемый список «Your sessions». `⚠ SESSION_SECRET` нужно задать в Vercel env (иначе dev-fallback небезопасен).
+
+**п.5 PDF-отчёт при завершении.**
+- `lib/pdf.ts`: свой генератор PDF без зависимостей (Helvetica, многостраничный A4). `lib/mailer.ts`: провайдер-интерфейс, путь Resend за `RESEND_API_KEY` (пока не задан — отправка выключена, per решение «позже»).
+- `POST /api/requests/[id]/report`: собирает PDF (дата, пользователь, сессия, сводка taken/absent/pending, по отделам article/color/season/present/need/статус). Если почта не настроена — 200 `{sent:false, reason:"email-not-configured"}` (PDF собран). При завершении с галочкой «Send report» вызывается best-effort.
+
 ## 2026-07-12 - English UI, модалка Finish, карандаш редактирования (TASKS 2026-07-12 пп. 3,4,6)
 
 - **п.4 English.** Оставшиеся русские строки UI переведены: «в зале X из Y» → «in hall X / Y», бейдж товара «X / Y».

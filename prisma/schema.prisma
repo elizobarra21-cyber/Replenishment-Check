@@ -46,13 +46,25 @@ model Product {
   requestItems RequestItem[]
 }
 
+model User {
+  id           String                 @id @default(cuid())
+  username     String                 @unique
+  passwordHash String
+  createdAt    DateTime               @default(now())
+  requests     ReplenishmentRequest[]
+}
+
 model ReplenishmentRequest {
   id        String        @id @default(cuid())
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
   createdBy String
+  userId    String?
+  user      User?         @relation(fields: [userId], references: [id])
   status    RequestStatus @default(DRAFT)
   items     RequestItem[]
+
+  @@index([userId])
 }
 
 model RequestItem {
@@ -65,6 +77,7 @@ model RequestItem {
   season              String?
   storageSection      String?
   labelPhotoUrl       String?
+  imageUrl            String?
   presentSizesQty     Json
   neededSizesQty      Json
   substitutePriority  Json

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   HALL_REQUIRED_SIZES,
   ALL_SIZE_SYSTEMS,
@@ -110,6 +110,13 @@ type RequestItem = {
   neededSizesQty: SizeQtyMap;
   substitutePriority: string[];
   product: Product;
+};
+
+type SessionSummary = {
+  id: string;
+  createdAt: string;
+  status: string;
+  _count: { items: number };
 };
 
 type WarehouseGroup = {
@@ -451,6 +458,15 @@ async function createLabelPhotoUrl(file: File) {
 }
 
 export default function Home() {
+  const [user, setUser] = useState<{ id: string; username: string } | null>(null);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
+  const [authUsername, setAuthUsername] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authError, setAuthError] = useState("");
+  const [authBusy, setAuthBusy] = useState(false);
+  const [sessions, setSessions] = useState<SessionSummary[]>([]);
+  const [showSessions, setShowSessions] = useState(false);
   const [requestId, setRequestId] = useState("");
   const [presentSizesQty, setPresentSizesQty] = useState<SizeQtyMap>({});
   const [draftItems, setDraftItems] = useState<RequestItem[]>([]);
@@ -489,11 +505,32 @@ export default function Home() {
   const [editSystem, setEditSystem] = useState<SizeSystem>("letter");
 
   useEffect(() => {
+    // Check for an existing session before doing anything else.
+    (async () => {
+      try {
+        const res = await fetch("/api/auth/me");
+        if (res.ok) {
+          const json = await res.json();
+          setUser(json.user ?? null);
+        }
+      } catch {
+        // treat as signed out
+      } finally {
+        setAuthChecked(true);
+      }
+    })();
+  }, []);
+
+  useEffect(() => {
+    if (!user) {
+      return;
+    }
+
     const createRequest = async () => {
       const res = await fetch("/api/requests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ createdBy: "telegram-worker" }),
+        body: JSON.stringify({}),
       });
       const json = await res.json();
       if (!res.ok) {
@@ -551,7 +588,7 @@ export default function Home() {
     };
 
     bootstrap().catch(() => setError("Unable to prepare replenishment request."));
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     // Remember the current mode so a reload returns to it.
@@ -634,6 +671,64 @@ export default function Home() {
       next.rawLine = composeParsedRawLine(next);
       return next;
     });
+  }
+
+  async function loadSessions() {
+    try {
+      const res = await fetch("/api/requests");
+      if (res.ok) {
+        const json = await res.json();
+        setSessions((json.requests ?? []) as SessionSummary[]);
+      }
+    } catch {
+      // ignore - the sessions panel is optional
+    }
+  }
+
+  useEffect(() => {
+    if (user) {
+      void loadSessions();
+    }
+  }, [user]);
+
+  async function submitAuth(event: FormEvent) {
+    event.preventDefault();
+    setAuthError("");
+    setAuthBusy(true);
+    try {
+      const endpoint = authMode === "signup" ? "register" : "login";
+      const res = await fetch(`/api/auth/${endpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: authUsername, password: authPassword }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        setAuthError(
+          errorMessage(json.error, "Could not sign in. Check your details and retry."),
+        );
+        return;
+      }
+      setAuthPassword("");
+      setUser(json.user as { id: string; username: string });
+    } catch {
+      setAuthError("Network error. Please retry.");
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function handleLogout() {
+    await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
+    clearStoredRequestId();
+    setUser(null);
+    setDraftItems([]);
+    setWarehouseGroups([]);
+    setSessions([]);
+    setRequestId("");
+    setEntryStarted(false);
+    setLastParsed(null);
+    setMode("hall");
   }
 
   async function handleScanLabel(file: File | null) {
@@ -845,7 +940,7 @@ export default function Home() {
       const res = await fetch("/api/requests", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ createdBy: "telegram-worker" }),
+        body: JSON.stringify({}),
       });
       const json = await res.json();
 
@@ -853,6 +948,8 @@ export default function Home() {
         setError("Unable to start a new replenishment.");
         return;
       }
+
+      void loadSessions();
 
       storeRequestId(json.request.id);
       setRequestId(json.request.id);
@@ -979,6 +1076,77 @@ export default function Home() {
     setPhotoViewer({ article: item.article, url: item.labelPhotoUrl });
   }
 
+  if (!authChecked) {
+    return (
+      <div className="mx-auto flex min-h-screen w-full max-w-md items-center justify-center p-6 text-sm text-black/50">
+        Loading...
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center p-6">
+        <div className="rounded-2xl border border-black/10 bg-panel p-6 shadow-sm">
+          <p className="text-sm font-semibold uppercase tracking-[0.16em] text-accent">
+            Store replenishment
+          </p>
+          <h1 className="mt-2 text-2xl font-bold">
+            {authMode === "signup" ? "Create account" : "Sign in"}
+          </h1>
+          <form onSubmit={submitAuth} className="mt-5 space-y-3">
+            <label className="block text-xs font-semibold uppercase tracking-wide text-black/55">
+              Username
+              <input
+                value={authUsername}
+                onChange={(event) => setAuthUsername(event.target.value)}
+                autoCapitalize="none"
+                autoCorrect="off"
+                spellCheck={false}
+                className="mt-1 w-full rounded-lg border border-black/10 bg-background px-3 py-2.5 text-sm outline-none focus:border-accent"
+              />
+            </label>
+            <label className="block text-xs font-semibold uppercase tracking-wide text-black/55">
+              Password
+              <input
+                type="password"
+                value={authPassword}
+                onChange={(event) => setAuthPassword(event.target.value)}
+                className="mt-1 w-full rounded-lg border border-black/10 bg-background px-3 py-2.5 text-sm outline-none focus:border-accent"
+              />
+            </label>
+            {authError ? (
+              <div className="rounded-lg bg-danger-soft px-3 py-2 text-sm">{authError}</div>
+            ) : null}
+            <button
+              type="submit"
+              disabled={authBusy || !authUsername || !authPassword}
+              className="w-full rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
+            >
+              {authBusy
+                ? "Please wait..."
+                : authMode === "signup"
+                  ? "Create account"
+                  : "Sign in"}
+            </button>
+          </form>
+          <button
+            type="button"
+            onClick={() => {
+              setAuthMode((mode) => (mode === "signup" ? "signin" : "signup"));
+              setAuthError("");
+            }}
+            className="mt-4 w-full text-center text-xs font-semibold text-accent underline underline-offset-2"
+          >
+            {authMode === "signup"
+              ? "Have an account? Sign in"
+              : "New here? Create an account"}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col p-4 md:p-8">
       {photoViewer ? (
@@ -1067,12 +1235,70 @@ export default function Home() {
       ) : null}
 
       <header className="rounded-2xl border border-black/10 bg-panel p-5 shadow-sm">
-        <p className="text-sm font-semibold uppercase tracking-[0.16em] text-accent">
-          Store replenishment
-        </p>
-        <h1 className="mt-2 text-2xl font-bold md:text-4xl">
-          Hall scan and warehouse picking
-        </h1>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.16em] text-accent">
+              Store replenishment
+            </p>
+            <h1 className="mt-2 text-2xl font-bold md:text-4xl">
+              Hall scan and warehouse picking
+            </h1>
+          </div>
+          <div className="flex shrink-0 flex-col items-end gap-1.5">
+            <span className="text-xs font-semibold text-black/55">@{user.username}</span>
+            <button
+              type="button"
+              onClick={() => void handleLogout()}
+              className="rounded-lg border border-black/10 bg-white px-3 py-1.5 text-xs font-semibold text-black/60"
+            >
+              Log out
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-xl border border-black/10 bg-white p-3">
+          <button
+            type="button"
+            onClick={() => {
+              setShowSessions((value) => !value);
+              if (!showSessions) void loadSessions();
+            }}
+            className="flex w-full items-center justify-between text-xs font-semibold uppercase tracking-wider text-black/55"
+          >
+            <span>Your sessions ({sessions.length})</span>
+            <span>{showSessions ? "Hide" : "Show"}</span>
+          </button>
+          {showSessions ? (
+            sessions.length === 0 ? (
+              <p className="mt-2 text-xs text-black/45">No past sessions yet.</p>
+            ) : (
+              <ul className="mt-2 divide-y divide-black/5">
+                {sessions.map((s) => (
+                  <li
+                    key={s.id}
+                    className="flex items-center justify-between gap-2 py-1.5 text-xs"
+                  >
+                    <span className="text-black/60">
+                      {new Date(s.createdAt).toLocaleString()}
+                    </span>
+                    <span className="flex shrink-0 items-center gap-2">
+                      <span className="text-black/45">{s._count.items} items</span>
+                      <span
+                        className={`rounded-full px-2 py-0.5 font-semibold ${
+                          s.status === "DONE"
+                            ? "bg-accent-soft text-accent"
+                            : "bg-background text-black/50"
+                        }`}
+                      >
+                        {s.status.toLowerCase()}
+                      </span>
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )
+          ) : null}
+        </div>
       </header>
 
       <main className="mt-5 space-y-4">

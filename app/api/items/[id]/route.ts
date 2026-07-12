@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { getSessionUser } from "@/lib/auth";
 import {
   buildSubstitutePriority,
   buildTargetSizes,
@@ -34,6 +35,10 @@ export async function PATCH(
   request: Request,
   context: { params: Promise<{ id: string }> },
 ) {
+  if (!getSessionUser(request)) {
+    return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+  }
+
   const { id } = await context.params;
   const body = await request.json().catch(() => ({}));
   const parsed = updateItemSchema.safeParse(body);

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { getSessionUser } from "@/lib/auth";
 import {
   buildSubstitutePriority,
   buildTargetSizes,
@@ -108,6 +109,10 @@ async function getOrCreateScannedProduct(article: string) {
 }
 
 export async function POST(request: Request) {
+  if (!getSessionUser(request)) {
+    return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+  }
+
   const body = await request.json().catch(() => ({}));
   const parsed = scanSchema.safeParse(body);
 
