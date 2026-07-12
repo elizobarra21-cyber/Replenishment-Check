@@ -475,6 +475,9 @@ export default function Home() {
   const [note, setNote] = useState("");
   // Warehouse: collapse the handled (taken/absent) items so only needed ones stand out.
   const [showDone, setShowDone] = useState(false);
+  // Finish confirmation modal + "send report" choice (report emailing is #5).
+  const [showFinishModal, setShowFinishModal] = useState(false);
+  const [sendReport, setSendReport] = useState(false);
   // Inline editing of an already-added item (expanded row).
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editArticle, setEditArticle] = useState("");
@@ -813,20 +816,24 @@ export default function Home() {
     if (!requestId) {
       return;
     }
-    if (
-      typeof window !== "undefined" &&
-      !window.confirm("Finish replenishment and clear the current list?")
-    ) {
-      return;
-    }
 
+    setShowFinishModal(false);
     setError("");
     setPhotoNotice("");
     setBusy(true);
 
     const finishedId = requestId;
+    const withReport = sendReport;
 
     try {
+      // Optionally email a PDF report of this session before it is closed.
+      if (withReport) {
+        await fetch(`/api/requests/${finishedId}/report`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        }).catch(() => {});
+      }
+
       // Mark the finished request as done (best effort - the new request is
       // what matters for continued work).
       await fetch(`/api/requests/${finishedId}`, {
@@ -862,6 +869,7 @@ export default function Home() {
       setFrontSize(null);
       setNote("");
       setShowDone(false);
+      setSendReport(false);
       setMode("hall");
     } catch {
       setError("Unable to finish replenishment.");
@@ -1000,6 +1008,60 @@ export default function Home() {
               alt={`Scanned label for article ${photoViewer.article}`}
               className="max-h-[75vh] w-full rounded-xl bg-background object-contain"
             />
+          </div>
+        </div>
+      ) : null}
+
+      {showFinishModal ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Finish replenishment"
+          onClick={() => !busy && setShowFinishModal(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2 className="text-lg font-semibold">Finish replenishment?</h2>
+            <p className="mt-1 text-sm text-black/60">
+              This closes the current session and clears the list. This cannot be undone.
+            </p>
+
+            <label className="mt-4 flex items-start gap-2.5 rounded-xl border border-black/10 bg-background p-3">
+              <input
+                type="checkbox"
+                checked={sendReport}
+                onChange={(event) => setSendReport(event.target.checked)}
+                className="mt-0.5 h-4 w-4 accent-[var(--accent,#2563eb)]"
+              />
+              <span className="text-sm">
+                <span className="font-semibold">Send report</span>
+                <span className="block text-xs text-black/55">
+                  Email a PDF of this session to star00@list.ru
+                </span>
+              </span>
+            </label>
+
+            <div className="mt-5 flex gap-2">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setShowFinishModal(false)}
+                className="flex-1 rounded-xl border border-black/10 bg-white px-4 py-3 text-sm font-semibold text-black/70 disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void handleFinishReplenishment()}
+                className="flex-1 rounded-xl bg-danger px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                {busy ? "Finishing..." : "Finish"}
+              </button>
+            </div>
           </div>
         </div>
       ) : null}
@@ -1249,7 +1311,7 @@ export default function Home() {
                     Choose existing sizes
                   </p>
                   <span className="rounded-full bg-accent-soft px-2.5 py-1 text-sm font-bold text-accent">
-                    в зале {hallPresentCount} из {hallTargetCount}
+                    in hall {hallPresentCount} / {hallTargetCount}
                   </span>
                 </div>
                 <div
@@ -1352,7 +1414,7 @@ export default function Home() {
                   </button>
 
                   <button
-                    onClick={() => void handleFinishReplenishment()}
+                    onClick={() => setShowFinishModal(true)}
                     disabled={busy}
                     className="mt-2 w-full rounded-xl border border-danger/40 bg-white px-4 py-3 text-sm font-semibold text-danger disabled:opacity-60"
                   >
@@ -1386,11 +1448,7 @@ export default function Home() {
                           const editTokens = explodeSizeMap(editPresent, editSel);
                           return (
                             <div key={item.id} className="rounded-lg bg-background px-3 py-2 text-sm">
-                              <button
-                                type="button"
-                                onClick={() => (editing ? setEditingId(null) : openEdit(item))}
-                                className="flex w-full items-center justify-between gap-3 text-left"
-                              >
+                              <div className="flex items-center justify-between gap-3">
                                 <span
                                   className={`truncate font-semibold ${
                                     item.pickStatus ? "text-black/40 line-through" : ""
@@ -1398,10 +1456,26 @@ export default function Home() {
                                 >
                                   {item.article}
                                 </span>
-                                <span className="shrink-0 rounded-full bg-accent-soft px-2.5 py-0.5 text-sm font-bold text-accent">
-                                  {presentTotal(item.presentSizesQty)} из {itemTargetCount(item)}
-                                </span>
-                              </button>
+                                <div className="flex shrink-0 items-center gap-2">
+                                  <span className="rounded-full bg-accent-soft px-2.5 py-0.5 text-sm font-bold text-accent">
+                                    {presentTotal(item.presentSizesQty)} / {itemTargetCount(item)}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => (editing ? setEditingId(null) : openEdit(item))}
+                                    aria-label={editing ? "Close editor" : "Edit item"}
+                                    aria-pressed={editing}
+                                    title={editing ? "Close" : "Edit"}
+                                    className={`inline-flex h-8 w-8 items-center justify-center rounded-full border text-base leading-none transition-colors active:scale-90 ${
+                                      editing
+                                        ? "border-accent bg-accent text-white"
+                                        : "border-black/15 text-black/55"
+                                    }`}
+                                  >
+                                    {editing ? "×" : "✏"}
+                                  </button>
+                                </div>
+                              </div>
 
                               {editing ? (
                                 <div className="mt-2 space-y-2">
@@ -1775,7 +1849,7 @@ export default function Home() {
             ) : null}
 
             <button
-              onClick={() => void handleFinishReplenishment()}
+              onClick={() => setShowFinishModal(true)}
               disabled={busy || draftItems.length === 0}
               className="mt-4 w-full rounded-xl border border-danger/40 bg-white px-4 py-3 text-sm font-semibold text-danger disabled:opacity-60"
             >
