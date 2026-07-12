@@ -1251,71 +1251,64 @@ export default function Home() {
         </div>
       ) : null}
 
-      <header className="rounded-2xl border border-black/10 bg-panel p-5 shadow-sm">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.16em] text-accent">
-              Store replenishment
-            </p>
-            <h1 className="mt-2 text-2xl font-bold md:text-4xl">
-              Hall scan and warehouse picking
-            </h1>
-          </div>
-          <div className="flex shrink-0 flex-col items-end gap-1.5">
+      <header className="rounded-2xl border border-black/10 bg-panel px-4 py-2.5 shadow-sm">
+        <div className="flex items-center justify-between gap-3">
+          <p className="truncate text-sm font-bold uppercase tracking-[0.14em] text-accent">
+            Store replenishment
+          </p>
+          <div className="flex shrink-0 items-center gap-2">
             <span className="text-xs font-semibold text-black/55">@{user.username}</span>
             <button
               type="button"
               onClick={() => void handleLogout()}
-              className="rounded-lg border border-black/10 bg-white px-3 py-1.5 text-xs font-semibold text-black/60"
+              className="rounded-lg border border-black/10 bg-white px-2.5 py-1 text-xs font-semibold text-black/60"
             >
               Log out
             </button>
           </div>
         </div>
 
-        <div className="mt-4 rounded-xl border border-black/10 bg-white p-3">
-          <button
-            type="button"
-            onClick={() => {
-              setShowSessions((value) => !value);
-              if (!showSessions) void loadSessions();
-            }}
-            className="flex w-full items-center justify-between text-xs font-semibold uppercase tracking-wider text-black/55"
-          >
-            <span>Your sessions ({sessions.length})</span>
-            <span>{showSessions ? "Hide" : "Show"}</span>
-          </button>
-          {showSessions ? (
-            sessions.length === 0 ? (
-              <p className="mt-2 text-xs text-black/45">No past sessions yet.</p>
-            ) : (
-              <ul className="mt-2 divide-y divide-black/5">
-                {sessions.map((s) => (
-                  <li
-                    key={s.id}
-                    className="flex items-center justify-between gap-2 py-1.5 text-xs"
-                  >
-                    <span className="text-black/60">
-                      {new Date(s.createdAt).toLocaleString()}
+        <button
+          type="button"
+          onClick={() => {
+            setShowSessions((value) => !value);
+            if (!showSessions) void loadSessions();
+          }}
+          className="mt-1.5 flex w-full items-center justify-between text-xs font-semibold text-black/45"
+        >
+          <span>Your sessions ({sessions.length})</span>
+          <span>{showSessions ? "Hide" : "Show"}</span>
+        </button>
+        {showSessions ? (
+          sessions.length === 0 ? (
+            <p className="mt-1.5 text-xs text-black/45">No past sessions yet.</p>
+          ) : (
+            <ul className="mt-1.5 divide-y divide-black/5 border-t border-black/5 pt-1">
+              {sessions.map((s) => (
+                <li
+                  key={s.id}
+                  className="flex items-center justify-between gap-2 py-1.5 text-xs"
+                >
+                  <span className="text-black/60">
+                    {new Date(s.createdAt).toLocaleString()}
+                  </span>
+                  <span className="flex shrink-0 items-center gap-2">
+                    <span className="text-black/45">{s._count.items} items</span>
+                    <span
+                      className={`rounded-full px-2 py-0.5 font-semibold ${
+                        s.status === "DONE"
+                          ? "bg-accent-soft text-accent"
+                          : "bg-background text-black/50"
+                      }`}
+                    >
+                      {s.status.toLowerCase()}
                     </span>
-                    <span className="flex shrink-0 items-center gap-2">
-                      <span className="text-black/45">{s._count.items} items</span>
-                      <span
-                        className={`rounded-full px-2 py-0.5 font-semibold ${
-                          s.status === "DONE"
-                            ? "bg-accent-soft text-accent"
-                            : "bg-background text-black/50"
-                        }`}
-                      >
-                        {s.status.toLowerCase()}
-                      </span>
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            )
-          ) : null}
-        </div>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )
+        ) : null}
       </header>
 
       <main className="mt-5 space-y-4">
