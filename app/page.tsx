@@ -334,7 +334,7 @@ function ColorSwatch({ value, size = 14 }: { value: string; size?: number }) {
   return (
     <span
       aria-hidden
-      className="inline-block shrink-0 rounded-full border border-black/20 align-middle"
+      className="keep-color inline-block shrink-0 rounded-full border border-black/20 align-middle"
       style={{ width: size, height: size, backgroundColor: resolveColor(value).hex }}
     />
   );
@@ -1107,6 +1107,8 @@ export default function Home() {
     setPhotoViewer({ article: item.article, url: item.labelPhotoUrl });
   }
 
+  const dark = mode === "warehouse";
+
   if (!authChecked) {
     return (
       <div className="mx-auto flex min-h-screen w-full max-w-md items-center justify-center p-6 text-sm text-black/50">
@@ -1182,10 +1184,14 @@ export default function Home() {
   }
 
   return (
-    <div className="mx-auto flex min-h-screen w-full max-w-6xl flex-col p-4 md:p-8">
+    <div
+      className={`mx-auto flex min-h-screen w-full max-w-6xl flex-col p-4 transition-colors duration-500 md:p-8 ${
+        dark ? "bg-[#0a0a0a]" : "bg-background"
+      }`}
+    >
       {photoViewer ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4"
+          className={`fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 ${dark ? "invert-dark" : ""}`}
           role="dialog"
           aria-modal="true"
           aria-label={`Scan photo for article ${photoViewer.article}`}
@@ -1208,7 +1214,7 @@ export default function Home() {
             <img
               src={photoViewer.url}
               alt={`Scanned label for article ${photoViewer.article}`}
-              className="max-h-[75vh] w-full rounded-xl bg-background object-contain"
+              className="keep-color max-h-[75vh] w-full rounded-xl bg-background object-contain"
             />
           </div>
         </div>
@@ -1220,7 +1226,7 @@ export default function Home() {
 
       {showFinishModal ? (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          className={`fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 ${dark ? "invert-dark" : ""}`}
           role="dialog"
           aria-modal="true"
           aria-label="Finish replenishment"
@@ -1272,7 +1278,7 @@ export default function Home() {
         </div>
       ) : null}
 
-      <header className="px-1">
+      <header className={`px-1 mode-transition ${dark ? "invert-dark" : ""}`}>
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2.5">
             <CosLogo className="h-4 w-12 shrink-0 text-black" />
@@ -1335,7 +1341,8 @@ export default function Home() {
         ) : null}
       </header>
 
-      <main className="mt-8 space-y-10">
+      <main className={`mt-8 mode-transition ${dark ? "invert-dark" : ""}`}>
+        <div key={mode} className="mode-enter space-y-10">
         {mode === "hall" ? (
           <>
             <section className="px-1">
@@ -1930,20 +1937,18 @@ export default function Home() {
           </>
         ) : (
           <section className="px-1">
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-              <div>
-                <h2 className="text-xl font-semibold">Warehouse mode</h2>
-                <p className="mt-1 text-sm text-black/60">
-                  Grouped by department. Sorted by season, article, color.
-                </p>
-              </div>
+            <div className="mb-4">
+              <h2 className="text-xl font-semibold">Warehouse mode</h2>
+              <p className="mt-1 text-sm text-black/60">
+                Grouped by department. Sorted by season, article, color.
+              </p>
               <button
                 type="button"
                 onClick={() => {
                   setMode("hall");
                   setPhotoNotice("");
                 }}
-                className="rounded-xl border border-accent bg-white px-3 py-2 text-sm font-semibold text-accent"
+                className="mt-3 w-full border border-accent bg-white px-4 py-4 text-[13px] font-medium uppercase tracking-[0.04em] text-accent"
               >
                 Hall mode
               </button>
@@ -2135,6 +2140,7 @@ export default function Home() {
             </button>
           </section>
         )}
+        </div>
       </main>
     </div>
   );
