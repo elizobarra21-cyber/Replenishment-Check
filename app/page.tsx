@@ -1366,7 +1366,7 @@ export default function Home() {
                 >
                   {scanBusy ? "Scanning..." : "Live scan"}
                 </button>
-                <div className="mt-2 flex flex-wrap items-center justify-center gap-x-5 gap-y-1 text-xs font-semibold text-black/45">
+                <div className="mt-2 mb-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-1 text-xs font-semibold text-black/45">
                   <label className="cursor-pointer underline underline-offset-2 hover:text-black/70">
                     {scanBusy ? "..." : "Scan photo"}
                     <input
@@ -1694,13 +1694,6 @@ export default function Home() {
                     Go to warehouse
                   </button>
 
-                  <button
-                    onClick={() => setShowFinishModal(true)}
-                    disabled={busy}
-                    className="mt-2 w-full border border-danger/40 bg-white px-4 py-4 text-[13px] font-medium uppercase tracking-[0.04em] text-danger disabled:opacity-60"
-                  >
-                    Finish replenishment
-                  </button>
                 </>
               ) : null}
             </section>
@@ -1714,7 +1707,7 @@ export default function Home() {
                   {hallBriefGroups.map((group) => (
                     <div
                       key={group.sectionId}
-                      className="border border-black/10 bg-white p-3"
+                      className="group-card border border-black/10 bg-white p-3"
                     >
                       <h3 className="mb-1 flex items-center gap-2 border-b border-black/10 pb-2 text-[13px] font-semibold uppercase tracking-[0.04em] text-black">
                         {group.sectionName}
@@ -1977,7 +1970,7 @@ export default function Home() {
                 {warehouseActiveGroups.map((group) => (
                   <div
                     key={group.sectionId}
-                    className="border border-black/10 bg-white p-3"
+                    className="group-card border border-black/10 bg-white p-3"
                   >
                     <h3 className="mb-1 flex items-center gap-2 border-b border-black/10 pb-2 text-[13px] font-semibold uppercase tracking-[0.04em] text-black">
                       {group.sectionName}
@@ -2146,7 +2139,7 @@ export default function Home() {
             <button
               onClick={() => setShowFinishModal(true)}
               disabled={busy || draftItems.length === 0}
-              className="mt-4 w-full border border-danger/40 bg-white px-4 py-4 text-[13px] font-medium uppercase tracking-[0.04em] text-danger disabled:opacity-60"
+              className="mt-12 w-full border border-danger/40 bg-white px-4 py-4 text-[13px] font-medium uppercase tracking-[0.04em] text-danger disabled:opacity-60"
             >
               Finish replenishment
             </button>

@@ -56,6 +56,11 @@ body {
   filter: invert(1) hue-rotate(180deg);
 }
 
+/* Item cards need a stronger outline on the dark (inverted) background. */
+.invert-dark .group-card {
+  border-color: rgb(0 0 0 / 0.35);
+}
+
 /* Fade/slide-in when switching between hall and warehouse modes. */
 @keyframes mode-enter {
   from {
