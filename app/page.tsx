@@ -1104,7 +1104,7 @@ export default function Home() {
   if (!user) {
     return (
       <div className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center p-6">
-        <div className="rounded-2xl border border-black/10 bg-panel p-6 shadow-sm">
+        <div className="border border-black/10 bg-panel p-6">
           <p className="text-sm font-semibold uppercase tracking-[0.16em] text-accent">
             Store replenishment
           </p>
@@ -1112,7 +1112,7 @@ export default function Home() {
             {authMode === "signup" ? "Create account" : "Sign in"}
           </h1>
           <form onSubmit={submitAuth} className="mt-5 space-y-3">
-            <label className="block text-xs font-semibold uppercase tracking-wide text-black/55">
+            <label className="block text-[13px] font-semibold uppercase tracking-[0.04em] text-black">
               Username
               <input
                 value={authUsername}
@@ -1123,7 +1123,7 @@ export default function Home() {
                 className="mt-1 w-full rounded-lg border border-black/10 bg-background px-3 py-[15px] text-base outline-none focus:border-accent"
               />
             </label>
-            <label className="block text-xs font-semibold uppercase tracking-wide text-black/55">
+            <label className="block text-[13px] font-semibold uppercase tracking-[0.04em] text-black">
               Password
               <input
                 type="password"
@@ -1138,7 +1138,7 @@ export default function Home() {
             <button
               type="submit"
               disabled={authBusy || !authUsername || !authPassword}
-              className="w-full rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
+              className="w-full bg-accent px-4 py-4 text-[13px] font-medium uppercase tracking-[0.04em] text-white disabled:opacity-60"
             >
               {authBusy
                 ? "Please wait..."
@@ -1238,7 +1238,7 @@ export default function Home() {
                 type="button"
                 disabled={busy}
                 onClick={() => setShowFinishModal(false)}
-                className="flex-1 rounded-xl border border-black/10 bg-white px-4 py-3 text-sm font-semibold text-black/70 disabled:opacity-60"
+                className="flex-1 border border-black/15 bg-white px-4 py-3.5 text-[13px] font-medium uppercase tracking-[0.04em] text-black/70 disabled:opacity-60"
               >
                 Cancel
               </button>
@@ -1246,7 +1246,7 @@ export default function Home() {
                 type="button"
                 disabled={busy}
                 onClick={() => void handleFinishReplenishment()}
-                className="flex-1 rounded-xl bg-danger px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
+                className="flex-1 bg-danger px-4 py-3.5 text-[13px] font-medium uppercase tracking-[0.04em] text-white disabled:opacity-60"
               >
                 {busy ? "Finishing..." : "Finish"}
               </button>
@@ -1257,7 +1257,7 @@ export default function Home() {
 
       <header className="px-1">
         <div className="flex items-center justify-between gap-3">
-          <p className="truncate text-base font-bold text-accent">
+          <p className="truncate text-base font-bold uppercase tracking-[0.08em] text-black">
             Replenishment
           </p>
           <div className="flex shrink-0 items-center gap-2">
@@ -1331,7 +1331,7 @@ export default function Home() {
                   type="button"
                   disabled={scanBusy}
                   onClick={() => setShowLive(true)}
-                  className={`flex w-full items-center justify-center rounded-xl px-4 py-4 text-base font-semibold active:scale-[0.99] disabled:opacity-60 ${
+                  className={`flex w-full items-center justify-center rounded-xl px-4 py-4 text-[13px] font-medium uppercase tracking-[0.04em] active:scale-[0.99] disabled:opacity-60 ${
                     entryStarted
                       ? "border border-black/15 bg-white text-black/70"
                       : "bg-accent text-white"
@@ -1389,7 +1389,7 @@ export default function Home() {
               {entryStarted ? (
                 <>
               <div className="mt-4 border-t border-black/10 pt-4">
-                <p className="text-xs font-semibold uppercase tracking-wider text-black/60">
+                <p className="text-[13px] font-semibold uppercase tracking-[0.04em] text-black">
                   Last parsed code
                 </p>
                 {lastParsed?.rawLine ? (
@@ -1398,7 +1398,7 @@ export default function Home() {
                   </p>
                 ) : null}
                 <div className="mt-3 space-y-2">
-                  <label className="block text-xs font-semibold uppercase tracking-wide text-black/55">
+                  <label className="block text-[13px] font-semibold uppercase tracking-[0.04em] text-black">
                     <span>article</span>
                     <input
                       value={parsedForFields.article}
@@ -1414,7 +1414,7 @@ export default function Home() {
                     />
                   </label>
 
-                  <div className="text-xs font-semibold uppercase tracking-wide text-black/55">
+                  <div className="text-[13px] font-semibold uppercase tracking-[0.04em] text-black">
                     <span>color</span>
                     <div className="mt-1 flex flex-wrap items-center gap-1.5">
                       <input
@@ -1487,7 +1487,7 @@ export default function Home() {
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
-                    <label className="block text-xs font-semibold uppercase tracking-wide text-black/55">
+                    <label className="block text-[13px] font-semibold uppercase tracking-[0.04em] text-black">
                       <span>season</span>
                       <input
                         value={parsedForFields.season}
@@ -1502,7 +1502,7 @@ export default function Home() {
                         className="mt-1 w-full rounded-lg border border-black/10 bg-white px-3 py-[13px] text-base font-semibold text-black outline-none ring-0 focus:border-accent"
                       />
                     </label>
-                    <label className="block text-xs font-semibold uppercase tracking-wide text-black/55">
+                    <label className="block text-[13px] font-semibold uppercase tracking-[0.04em] text-black">
                       <span>storage</span>
                       <input
                         value={parsedForFields.storageSection}
@@ -1522,7 +1522,7 @@ export default function Home() {
               </div>
 
               <div className="mt-4 border-t border-black/10 pt-4">
-                <p className="text-xs font-semibold uppercase tracking-wider text-black/60">
+                <p className="text-[13px] font-semibold uppercase tracking-[0.04em] text-black">
                   On front
                 </p>
                 <div className="mt-2 flex gap-2">
@@ -1551,7 +1551,7 @@ export default function Home() {
               </div>
 
               <div className="mt-4 border-t border-black/10 pt-4">
-                <p className="text-xs font-semibold uppercase tracking-wider text-black/60">
+                <p className="text-[13px] font-semibold uppercase tracking-[0.04em] text-black">
                   Size grid
                 </p>
                 <div className="mt-2">
@@ -1561,7 +1561,7 @@ export default function Home() {
 
               <div className="mt-4 border-t border-black/10 pt-4">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-xs font-semibold uppercase tracking-wider text-black/60">
+                  <p className="text-[13px] font-semibold uppercase tracking-[0.04em] text-black">
                     Choose existing sizes
                   </p>
                   <span className="rounded-full bg-accent-soft px-2.5 py-1 text-sm font-bold text-accent">
@@ -1585,7 +1585,7 @@ export default function Home() {
                       }}
                       className="min-h-14 rounded-xl border border-black/15 bg-white px-3 py-3 text-center transition-colors active:scale-[0.97]"
                     >
-                      <span className="text-base font-semibold text-black/75">{size}</span>
+                      <span className="text-sm font-normal text-black">{size}</span>
                     </button>
                   ))}
                 </div>
@@ -1615,7 +1615,7 @@ export default function Home() {
               </div>
 
               <div className="mt-4 border-t border-black/10 pt-4">
-                <p className="text-xs font-semibold uppercase tracking-wider text-black/60">
+                <p className="text-[13px] font-semibold uppercase tracking-[0.04em] text-black">
                   Suggested sizes
                 </p>
                 <div className="mt-2 flex min-h-8 flex-wrap gap-1.5">
@@ -1635,7 +1635,7 @@ export default function Home() {
               </div>
 
               <div className="mt-4 border-t border-black/10 pt-4">
-                <p className="text-xs font-semibold uppercase tracking-wider text-black/60">
+                <p className="text-[13px] font-semibold uppercase tracking-[0.04em] text-black">
                   Comment
                 </p>
                 <input
@@ -1649,8 +1649,8 @@ export default function Home() {
 
               <button
                 onClick={() => void handleAddItem()}
-                disabled={busy || !lastParsed?.article}
-                className="mt-4 w-full rounded-xl bg-accent px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
+                disabled={busy || (lastParsed?.article.length ?? 0) < 5}
+                className="mt-5 w-full bg-accent px-4 py-4 text-[13px] font-medium uppercase tracking-[0.04em] text-white disabled:opacity-60"
               >
                 Add to list
               </button>
@@ -1662,7 +1662,7 @@ export default function Home() {
                   <button
                     onClick={() => void handleGoWarehouse()}
                     disabled={busy}
-                    className="mt-3 w-full rounded-xl border border-accent bg-white px-4 py-3 text-sm font-semibold text-accent disabled:opacity-60"
+                    className="mt-3 w-full border border-accent bg-white px-4 py-4 text-[13px] font-medium uppercase tracking-[0.04em] text-accent disabled:opacity-60"
                   >
                     Go to warehouse
                   </button>
@@ -1670,7 +1670,7 @@ export default function Home() {
                   <button
                     onClick={() => setShowFinishModal(true)}
                     disabled={busy}
-                    className="mt-2 w-full rounded-xl border border-danger/40 bg-white px-4 py-3 text-sm font-semibold text-danger disabled:opacity-60"
+                    className="mt-2 w-full border border-danger/40 bg-white px-4 py-4 text-[13px] font-medium uppercase tracking-[0.04em] text-danger disabled:opacity-60"
                   >
                     Finish replenishment
                   </button>
@@ -1687,9 +1687,9 @@ export default function Home() {
                   {hallBriefGroups.map((group) => (
                     <div
                       key={group.sectionId}
-                      className="rounded-xl border border-black/10 bg-white p-3 shadow-sm"
+                      className="border border-black/10 bg-white p-3"
                     >
-                      <h3 className="mb-1 flex items-center gap-2 border-b border-black/10 pb-2 text-sm font-bold uppercase tracking-wide text-black/70">
+                      <h3 className="mb-1 flex items-center gap-2 border-b border-black/10 pb-2 text-[13px] font-semibold uppercase tracking-[0.04em] text-black">
                         {group.sectionName}
                         <span className="ml-auto rounded-full bg-background px-2 py-0.5 text-xs font-bold text-black/55">
                           {group.items.length}
@@ -1952,9 +1952,9 @@ export default function Home() {
                 {warehouseActiveGroups.map((group) => (
                   <div
                     key={group.sectionId}
-                    className="rounded-xl border border-black/10 bg-white p-3 shadow-sm"
+                    className="border border-black/10 bg-white p-3"
                   >
-                    <h3 className="mb-1 flex items-center gap-2 border-b border-black/10 pb-2 text-sm font-bold uppercase tracking-wide text-black/70">
+                    <h3 className="mb-1 flex items-center gap-2 border-b border-black/10 pb-2 text-[13px] font-semibold uppercase tracking-[0.04em] text-black">
                       {group.sectionName}
                       <span className="ml-auto rounded-full bg-background px-2 py-0.5 text-xs font-bold text-black/55">
                         {group.items.length}
@@ -2023,7 +2023,7 @@ export default function Home() {
                               type="button"
                               onClick={() => void handleSetPickStatus(item, "taken")}
                               aria-pressed={item.pickStatus === "taken"}
-                              className={`flex-1 rounded-xl px-3 py-3 text-base font-semibold transition-colors active:scale-[0.97] ${
+                              className={`flex-1 px-3 py-3.5 text-[13px] font-medium uppercase tracking-[0.04em] transition-colors active:scale-[0.97] ${
                                 item.pickStatus === "taken"
                                   ? "bg-accent text-white"
                                   : "border border-accent bg-white text-accent"
@@ -2035,7 +2035,7 @@ export default function Home() {
                               type="button"
                               onClick={() => void handleSetPickStatus(item, "absent")}
                               aria-pressed={item.pickStatus === "absent"}
-                              className={`flex-1 rounded-xl px-3 py-3 text-base font-semibold transition-colors active:scale-[0.97] ${
+                              className={`flex-1 px-3 py-3.5 text-[13px] font-medium uppercase tracking-[0.04em] transition-colors active:scale-[0.97] ${
                                 item.pickStatus === "absent"
                                   ? "bg-danger text-white"
                                   : "border border-danger/40 bg-white text-danger"
@@ -2058,7 +2058,7 @@ export default function Home() {
             )}
 
             {warehouseDoneItems.length > 0 ? (
-              <div className="mt-4 rounded-xl border border-black/10 bg-white p-3 shadow-sm">
+              <div className="mt-4 border border-black/10 bg-white p-3">
                 <button
                   type="button"
                   onClick={() => setShowDone((value) => !value)}
@@ -2109,7 +2109,7 @@ export default function Home() {
             <button
               onClick={() => setShowFinishModal(true)}
               disabled={busy || draftItems.length === 0}
-              className="mt-4 w-full rounded-xl border border-danger/40 bg-white px-4 py-3 text-sm font-semibold text-danger disabled:opacity-60"
+              className="mt-4 w-full border border-danger/40 bg-white px-4 py-4 text-[13px] font-medium uppercase tracking-[0.04em] text-danger disabled:opacity-60"
             >
               Finish replenishment
             </button>

@@ -33,7 +33,7 @@ function isPhotoReference(value: string) {
 
 const scanSchema = z.object({
   requestId: z.string().min(1),
-  article: z.string().min(1),
+  article: z.string().regex(/^\d{5,10}$/, "Article must be 5-10 digits"),
   color: z.string().trim().max(32).optional().default(""),
   colorName: z.string().trim().max(32).optional().default(""),
   season: z.string().trim().max(32).optional().default(""),

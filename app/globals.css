@@ -1,13 +1,17 @@
 @import "tailwindcss";
 
+/* COS-inspired theme: white surfaces, near-black ink, hairline gray borders,
+   square corners, small uppercase labels with 4% letter spacing. Values taken
+   from cos.com computed styles (SuisseIntl 16/24 #080808, CTA #212121 bar,
+   borders #E6E6E6, surfaces #F3F3F3, border-radius 0 everywhere). */
 :root {
-  --background: #f4f6f3;
-  --foreground: #1d2823;
+  --background: #ffffff;
+  --foreground: #080808;
   --panel: #ffffff;
-  --accent: #176c5d;
-  --accent-soft: #e2f4ee;
-  --danger: #c0392b;
-  --danger-soft: #ffe7e0;
+  --accent: #212121;
+  --accent-soft: #f3f3f3;
+  --danger: #cc071e;
+  --danger-soft: #fbeaea;
 }
 
 @theme inline {
@@ -18,12 +22,22 @@
   --color-accent-soft: var(--accent-soft);
   --color-danger: var(--danger);
   --color-danger-soft: var(--danger-soft);
-  --font-sans: "Geist", "Geist Fallback", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "Geist Mono", "Geist Mono Fallback", ui-monospace, monospace;
+  --font-sans: "SuisseIntl", "Suisse Intl", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* COS uses square corners everywhere; keep rounded-full for color dots. */
+  --radius-xs: 0px;
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+  --radius-2xl: 0px;
+  --radius-3xl: 0px;
+  --radius-4xl: 0px;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: "Geist", "Geist Fallback", ui-sans-serif, system-ui, sans-serif;
+  font-family: "SuisseIntl", "Suisse Intl", "Helvetica Neue", Helvetica, Arial, sans-serif;
 }
