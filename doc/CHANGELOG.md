@@ -2,6 +2,10 @@
 
 Формат: новая запись сверху. После каждой итерации фиксировать, что изменилось и почему.
 
+## 2026-07-13 - Палитра цветов как в каталоге COS
+
+Набор быстрых цветов заменён на 13 семейств фильтра cos.com (Beige, Blanc, Bleu, Gris, Jaune, Marron, Mauve, Noir, Orange, Rose, Rouge, Turquoise, Vert) — но с нормальными «одёжными» оттенками вместо плейсхолдерных RGB сайта. Добавлены turquoise/green/orange/mauve; sky/cream/burgundy убраны из выбора, но старые записи с ними по-прежнему резолвятся (LEGACY_COLORS). Словарь слов с этикеток (`colorFromLabelText`) перенаправлен на новые имена палитры (KHAKI/OLIVE→green, BURGUNDY/WINE→red, LILAC/PURPLE→mauve, MUSTARD→yellow и т.д.).
+
 ## 2026-07-13 - UI в фирменном стиле COS
 
 Стиль снят с живой страницы товара cos.com (вычисленные стили через браузер):

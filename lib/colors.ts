@@ -9,23 +9,36 @@ export type CommonColor = {
   hex: string;
 };
 
-// The most-used colors, shown as a quick-pick panel next to the color field.
+// The quick-pick panel mirrors the 13 color families of the cos.com catalog
+// filter (Beige, Blanc, Bleu, Gris, Jaune, Marron, Mauve, Noir, Orange, Rose,
+// Rouge, Turquoise, Vert), with proper garment shades instead of the site's
+// placeholder RGB values.
 export const COMMON_COLORS: CommonColor[] = [
   { name: "white", label: "White", hex: "#FFFFFF" },
   { name: "black", label: "Black", hex: "#1A1A1A" },
   { name: "gray", label: "Gray", hex: "#B6B6B4" },
-  { name: "blue", label: "Blue", hex: "#151B54" },
-  { name: "brown", label: "Brown", hex: "#2B1B17" },
-  { name: "pink", label: "Pink", hex: "#FAAFBA" },
-  { name: "yellow", label: "Yellow", hex: "#FFE87C" },
-  { name: "sky", label: "Sky", hex: "#3BB9FF" },
   { name: "beige", label: "Beige", hex: "#E3D5B8" },
-  { name: "cream", label: "Cream", hex: "#FFF8E1" },
+  { name: "brown", label: "Brown", hex: "#2B1B17" },
+  { name: "blue", label: "Blue", hex: "#151B54" },
+  { name: "turquoise", label: "Turquoise", hex: "#4AC6C9" },
+  { name: "green", label: "Green", hex: "#2F6B4F" },
+  { name: "yellow", label: "Yellow", hex: "#FFE87C" },
+  { name: "orange", label: "Orange", hex: "#E8762C" },
   { name: "red", label: "Red", hex: "#DC2626" },
+  { name: "pink", label: "Pink", hex: "#FAAFBA" },
+  { name: "mauve", label: "Mauve", hex: "#A47DAB" },
+];
+
+// Names no longer in the picker but stored on older items - keep resolving them.
+const LEGACY_COLORS: CommonColor[] = [
+  { name: "sky", label: "Sky", hex: "#3BB9FF" },
+  { name: "cream", label: "Cream", hex: "#FFF8E1" },
   { name: "burgundy", label: "Burgundy", hex: "#7B1E2B" },
 ];
 
-const COMMON_COLOR_BY_NAME = new Map(COMMON_COLORS.map((color) => [color.name, color]));
+const COMMON_COLOR_BY_NAME = new Map(
+  [...COMMON_COLORS, ...LEGACY_COLORS].map((color) => [color.name, color]),
+);
 
 export function isHexColor(value: string): boolean {
   return /^#[0-9a-fA-F]{6}$/.test(value);
@@ -35,25 +48,27 @@ export function isHexColor(value: string): boolean {
 // palette name or a hex for shades outside the quick-pick palette). Multi-word
 // phrases come first so "OFF WHITE" wins over "WHITE".
 const LABEL_COLOR_WORDS: Array<[string, string]> = [
-  ["OFF WHITE", "cream"],
-  ["OFFWHITE", "cream"],
-  ["LIGHT BLUE", "sky"],
-  ["SKY BLUE", "sky"],
-  ["BABY BLUE", "sky"],
+  ["OFF WHITE", "white"],
+  ["OFFWHITE", "white"],
+  ["LIGHT BLUE", "turquoise"],
+  ["SKY BLUE", "turquoise"],
+  ["BABY BLUE", "turquoise"],
+  ["TURQUOISE", "turquoise"],
+  ["TEAL", "turquoise"],
   ["DARK BLUE", "blue"],
   ["LIGHT PINK", "pink"],
   ["DARK GREY", "gray"],
   ["DARK GRAY", "gray"],
   ["LIGHT GREY", "gray"],
   ["LIGHT GRAY", "gray"],
-  ["IVORY", "cream"],
-  ["ECRU", "cream"],
-  ["CREAM", "cream"],
+  ["IVORY", "white"],
+  ["ECRU", "beige"],
+  ["CREAM", "beige"],
   ["NAVY", "blue"],
-  ["DENIM", "#3B5F8A"],
+  ["DENIM", "blue"],
   ["BLUE", "blue"],
-  ["CHARCOAL", "#3A3A3A"],
-  ["ANTHRACITE", "#3A3A3A"],
+  ["CHARCOAL", "gray"],
+  ["ANTHRACITE", "gray"],
   ["GREY", "gray"],
   ["GRAY", "gray"],
   ["BLACK", "black"],
@@ -65,22 +80,23 @@ const LABEL_COLOR_WORDS: Array<[string, string]> = [
   ["SAND", "beige"],
   ["TAN", "beige"],
   ["BEIGE", "beige"],
-  ["BURGUNDY", "burgundy"],
-  ["BORDEAUX", "burgundy"],
-  ["WINE", "burgundy"],
-  ["MAROON", "burgundy"],
+  ["BURGUNDY", "red"],
+  ["BORDEAUX", "red"],
+  ["WINE", "red"],
+  ["MAROON", "red"],
   ["ROSE", "pink"],
   ["PINK", "pink"],
-  ["MUSTARD", "#D4A017"],
+  ["MUSTARD", "yellow"],
   ["YELLOW", "yellow"],
   ["RED", "red"],
-  ["KHAKI", "#8A7F4A"],
-  ["OLIVE", "#6B6B3A"],
-  ["GREEN", "#2F6B4F"],
-  ["ORANGE", "#E8762C"],
-  ["LILAC", "#B7A8D3"],
-  ["PURPLE", "#7C5CBF"],
-  ["VIOLET", "#7C5CBF"],
+  ["KHAKI", "green"],
+  ["OLIVE", "green"],
+  ["GREEN", "green"],
+  ["ORANGE", "orange"],
+  ["LILAC", "mauve"],
+  ["MAUVE", "mauve"],
+  ["PURPLE", "mauve"],
+  ["VIOLET", "mauve"],
 ];
 
 /**
