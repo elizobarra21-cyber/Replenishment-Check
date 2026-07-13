@@ -24,7 +24,7 @@ import {
 } from "@/lib/label-extractor";
 import {
   beginScan,
-  detectSizeToken,
+  detectLabelHints,
   readLabelCandidates,
   terminateOcr,
   warmUpOcr,
@@ -772,7 +772,7 @@ export default function Home() {
       // Recycle the OCR workers periodically (before the passes start) so the
       // scanner does not lose accuracy over a long session.
       await beginScan();
-      const detectionPromise = detectSizeToken(file).catch(() => null);
+      const hintsPromise = detectLabelHints(file).catch(() => null);
       const candidates = await readLabelCandidates(file);
 
       let extracted: LabelExtractionResult | null = null;
@@ -798,10 +798,14 @@ export default function Home() {
       }
 
       // Pick the size system from the EUR token + the department (men's if the
-      // department code starts with 45).
-      const detection = await detectionPromise;
+      // department code starts with 45), and the visual color from a color word
+      // printed on the label.
+      const hints = await hintsPromise;
       const dept = extracted.parsed?.storageSection ?? "";
-      setSizeSystem(resolveSizeSystem(detection, dept) ?? "letter");
+      setSizeSystem(resolveSizeSystem(hints?.size ?? null, dept) ?? "letter");
+      if (hints?.color) {
+        setColorValue(hints.color);
+      }
 
       const photoUrl = await photoUrlPromise;
       setCurrentLabelPhotoUrl(photoUrl || null);
@@ -1960,17 +1964,25 @@ export default function Home() {
                       {group.items.map((item) => (
                         <article key={item.id} className="py-2 first:pt-0 last:pb-0">
                           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2.5">
                               <button
                                 type="button"
                                 onClick={() => openScanPhoto(item)}
                                 title={item.labelPhotoUrl ? "Open scan photo" : "No scan photo saved"}
-                                className={`text-left text-sm font-semibold text-accent underline decoration-accent/40 underline-offset-4 ${
+                                className={`text-left text-3xl font-bold tracking-tight text-accent underline decoration-accent/25 underline-offset-[6px] ${
                                   item.pickStatus ? "opacity-50 line-through" : ""
                                 }`}
                               >
                                 {item.article}
                               </button>
+                              {item.colorName ? (
+                                <ColorSwatch value={item.colorName} size={22} />
+                              ) : null}
+                              {item.color ? (
+                                <span className="text-sm font-semibold text-black/45">
+                                  {item.color}
+                                </span>
+                              ) : null}
                               <span className="shrink-0 rounded-full bg-accent-soft px-2 py-0.5 text-xs font-bold text-accent">
                                 {presentTotal(item.presentSizesQty)}/{itemTargetCount(item)}
                               </span>
@@ -1993,10 +2005,6 @@ export default function Home() {
                           </div>
 
                           <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-black/55">
-                            <span className="inline-flex items-center gap-1.5">
-                              {item.colorName ? <ColorSwatch value={item.colorName} size={16} /> : null}
-                              {item.color ? <span>{item.color}</span> : null}
-                            </span>
                             <span>season {formatLabelPart(item.season)}</span>
                             <span className="inline-flex items-center gap-1.5">
                               present
@@ -2010,15 +2018,15 @@ export default function Home() {
                             </p>
                           ) : null}
 
-                          <div className="mt-2 flex items-center gap-2">
+                          <div className="mt-2.5 flex items-center gap-2">
                             <button
                               type="button"
                               onClick={() => void handleSetPickStatus(item, "taken")}
                               aria-pressed={item.pickStatus === "taken"}
-                              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors active:scale-[0.97] ${
+                              className={`flex-1 rounded-xl px-3 py-3 text-base font-semibold transition-colors active:scale-[0.97] ${
                                 item.pickStatus === "taken"
                                   ? "bg-accent text-white"
-                                  : "border border-accent text-accent"
+                                  : "border border-accent bg-white text-accent"
                               }`}
                             >
                               Taken
@@ -2027,16 +2035,16 @@ export default function Home() {
                               type="button"
                               onClick={() => void handleSetPickStatus(item, "absent")}
                               aria-pressed={item.pickStatus === "absent"}
-                              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors active:scale-[0.97] ${
+                              className={`flex-1 rounded-xl px-3 py-3 text-base font-semibold transition-colors active:scale-[0.97] ${
                                 item.pickStatus === "absent"
                                   ? "bg-danger text-white"
-                                  : "border border-danger/40 text-danger"
+                                  : "border border-danger/40 bg-white text-danger"
                               }`}
                             >
                               Absent
                             </button>
                             {item.pickStatus ? (
-                              <span className="text-xs font-semibold text-black/45">
+                              <span className="shrink-0 text-xs font-semibold text-black/45">
                                 {item.pickStatus === "taken" ? "Picked" : "Not in stock"}
                               </span>
                             ) : null}

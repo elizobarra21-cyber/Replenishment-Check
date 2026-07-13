@@ -423,40 +423,56 @@ export async function recognizeStripCanvas(
 // department (men's if it starts with 45) to pick the concrete size system.
 export type SizeDetection = { kind: "letter" } | { kind: "number"; value: number };
 
+export type LabelHints = {
+  size: SizeDetection | null;
+  // Stored color value (palette name or hex) from a color word on the label.
+  color: string | null;
+};
+
 /**
- * Detect the garment size token from the label by reading the line that
- * contains "EUR":
- *   - a numeric size in the 20..58 range -> { kind: "number", value }
- *   - letters XS/S/M/L/XL -> { kind: "letter" }
- * Returns null if nothing is recognized.
+ * Read the label's text once and extract secondary hints:
+ *   - size token from the "EUR" line (numeric 20..58 or XS/S/M/L/XL letters);
+ *   - garment color from a printed color word (e.g. "DARK NAVY").
+ * Best effort - either field is null when nothing is recognized.
  */
-export async function detectSizeToken(file: File): Promise<SizeDetection | null> {
+export async function detectLabelHints(file: File): Promise<LabelHints> {
+  const hints: LabelHints = { size: null, color: null };
   try {
+    const { colorFromLabelText } = await import("./colors");
     const worker = await getTextWorker();
     const { canvas } = await prepareScan(file);
     const res = await worker.recognize(canvas, undefined, { text: true, blocks: true });
 
     for (const line of flattenLines(res.data)) {
       const upper = line.text.toUpperCase();
-      if (!/\bEUR?\b/.test(upper)) {
-        continue;
+
+      if (!hints.color) {
+        hints.color = colorFromLabelText(upper);
       }
-      // Drop the EUR token; the size sits on the same line.
-      const rest = upper.replace(/\bEUR?\b/g, " ");
-      // A plausible garment size number (women 24..44, men 28..54).
-      const numbers = rest.match(/\d{2}/g) ?? [];
-      for (const raw of numbers) {
-        const value = Number(raw);
-        if (value >= 20 && value <= 58) {
-          return { kind: "number", value };
+
+      if (!hints.size && /\bEUR?\b/.test(upper)) {
+        // Drop the EUR token; the size sits on the same line.
+        const rest = upper.replace(/\bEUR?\b/g, " ");
+        // A plausible garment size number (women 24..44, men 28..54).
+        const numbers = rest.match(/\d{2}/g) ?? [];
+        for (const raw of numbers) {
+          const value = Number(raw);
+          if (value >= 20 && value <= 58) {
+            hints.size = { kind: "number", value };
+            break;
+          }
+        }
+        if (!hints.size && /\b(XS|S|M|L|XL)\b/.test(rest)) {
+          hints.size = { kind: "letter" };
         }
       }
-      if (/\b(XS|S|M|L|XL)\b/.test(rest)) {
-        return { kind: "letter" };
+
+      if (hints.size && hints.color) {
+        break;
       }
     }
-    return null;
+    return hints;
   } catch {
-    return null;
+    return hints;
   }
 }
