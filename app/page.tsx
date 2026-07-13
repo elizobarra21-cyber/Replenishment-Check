@@ -1972,7 +1972,7 @@ export default function Home() {
                     key={group.sectionId}
                     className="group-card border border-black/10 bg-white p-3"
                   >
-                    <h3 className="mb-1 flex items-center gap-2 border-b border-black/10 pb-2 text-[13px] font-semibold uppercase tracking-[0.04em] text-black">
+                    <h3 className="mb-1 flex items-center gap-2 border-b border-black/10 pb-2 text-[13px] font-semibold uppercase tracking-[0.04em] text-black/80">
                       {group.sectionName}
                       <span className="ml-auto rounded-full bg-background px-2 py-0.5 text-xs font-bold text-black/55">
                         {group.items.length}
@@ -2048,7 +2048,7 @@ export default function Home() {
                             </p>
                           ) : null}
 
-                          <div className="mt-2.5 flex items-center gap-2">
+                          <div className="mt-5 flex items-center gap-2">
                             <button
                               type="button"
                               onClick={() => void handleSetPickStatus(item, "taken")}
