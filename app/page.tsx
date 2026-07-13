@@ -374,7 +374,7 @@ function SizeGridPicker({
     } ${
       active
         ? "border-accent bg-accent-soft text-accent"
-        : "border-black/10 text-black/60"
+        : "border-black/10 bg-white text-black/60"
     }`;
   return (
     <div className="space-y-1.5">
@@ -1251,7 +1251,7 @@ export default function Home() {
         </div>
       ) : null}
 
-      <header className="rounded-2xl border border-black/10 bg-panel px-4 py-2.5 shadow-sm">
+      <header className="px-1">
         <div className="flex items-center justify-between gap-3">
           <p className="truncate text-base font-bold text-accent">
             Replenishment
@@ -1311,10 +1311,10 @@ export default function Home() {
         ) : null}
       </header>
 
-      <main className="mt-5 space-y-4">
+      <main className="mt-8 space-y-10">
         {mode === "hall" ? (
           <>
-            <section className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
+            <section className="px-1">
               <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
                 <h2 className="text-xl font-semibold">Hall mode</h2>
                 <span className="rounded-full bg-accent-soft px-3 py-1 text-xs font-semibold uppercase tracking-wider text-accent">
@@ -1406,7 +1406,7 @@ export default function Home() {
                         )
                       }
                       maxLength={7}
-                      className="mt-1 w-full rounded-lg border border-black/10 bg-background px-3 py-[13px] text-base font-semibold text-black outline-none ring-0 focus:border-accent"
+                      className="mt-1 w-full rounded-lg border border-black/10 bg-white px-3 py-[13px] text-base font-semibold text-black outline-none ring-0 focus:border-accent"
                     />
                   </label>
 
@@ -1424,7 +1424,7 @@ export default function Home() {
                           )
                         }
                         maxLength={3}
-                        className="w-16 rounded-lg border border-black/10 bg-background px-3 py-[13px] text-base font-semibold text-black outline-none ring-0 focus:border-accent"
+                        className="w-16 rounded-lg border border-black/10 bg-white px-3 py-[13px] text-base font-semibold text-black outline-none ring-0 focus:border-accent"
                       />
                       {COMMON_COLORS.map((swatch) => {
                         const selected = colorValue.toLowerCase() === swatch.name;
@@ -1495,7 +1495,7 @@ export default function Home() {
                           )
                         }
                         maxLength={1}
-                        className="mt-1 w-full rounded-lg border border-black/10 bg-background px-3 py-[13px] text-base font-semibold text-black outline-none ring-0 focus:border-accent"
+                        className="mt-1 w-full rounded-lg border border-black/10 bg-white px-3 py-[13px] text-base font-semibold text-black outline-none ring-0 focus:border-accent"
                       />
                     </label>
                     <label className="block text-xs font-semibold uppercase tracking-wide text-black/55">
@@ -1510,7 +1510,7 @@ export default function Home() {
                           )
                         }
                         maxLength={4}
-                        className="mt-1 w-full rounded-lg border border-black/10 bg-background px-3 py-[13px] text-base font-semibold text-black outline-none ring-0 focus:border-accent"
+                        className="mt-1 w-full rounded-lg border border-black/10 bg-white px-3 py-[13px] text-base font-semibold text-black outline-none ring-0 focus:border-accent"
                       />
                     </label>
                   </div>
@@ -1536,7 +1536,7 @@ export default function Home() {
                         className={`flex-1 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors active:scale-[0.98] ${
                           active
                             ? "border-accent bg-accent-soft text-accent"
-                            : "border-black/10 text-black/60"
+                            : "border-black/10 bg-white text-black/60"
                         }`}
                       >
                         {label}
@@ -1579,7 +1579,7 @@ export default function Home() {
                           [size]: (prev[size] ?? 0) + 1,
                         }));
                       }}
-                      className="min-h-14 rounded-xl border border-black/15 bg-background px-3 py-3 text-center transition-colors active:scale-[0.97]"
+                      className="min-h-14 rounded-xl border border-black/15 bg-white px-3 py-3 text-center transition-colors active:scale-[0.97]"
                     >
                       <span className="text-base font-semibold text-black/75">{size}</span>
                     </button>
@@ -1598,7 +1598,7 @@ export default function Home() {
                             [token]: Math.max(0, (prev[token] ?? 0) - 1),
                           }));
                         }}
-                        className="rounded-md bg-background px-2.5 py-1.5 text-sm font-semibold active:scale-[0.97]"
+                        className="rounded-md border border-black/10 bg-white px-2.5 py-1.5 text-sm font-semibold active:scale-[0.97]"
                         title="Remove one"
                       >
                         {token}
@@ -1639,7 +1639,7 @@ export default function Home() {
                   onChange={(event) => setNote(event.target.value)}
                   maxLength={500}
                   placeholder="Optional note"
-                  className="mt-2 w-full rounded-lg border border-black/10 bg-background px-3 py-[13px] text-base text-black outline-none ring-0 focus:border-accent"
+                  className="mt-2 w-full rounded-lg border border-black/10 bg-white px-3 py-[13px] text-base text-black outline-none ring-0 focus:border-accent"
                 />
               </div>
 
@@ -1674,7 +1674,7 @@ export default function Home() {
               ) : null}
             </section>
 
-            <section className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
+            <section className="px-1">
               <h2 className="mb-4 text-xl font-semibold">Warehouse short list</h2>
               {hallBriefGroups.length === 0 ? (
                 <p className="text-sm text-black/60">No items added yet.</p>
@@ -1683,11 +1683,11 @@ export default function Home() {
                   {hallBriefGroups.map((group) => (
                     <div
                       key={group.sectionId}
-                      className="overflow-hidden rounded-xl border border-black/15 bg-white p-3"
+                      className="rounded-xl border border-black/10 bg-white p-3 shadow-sm"
                     >
-                      <h3 className="-mx-3 -mt-3 mb-3 flex items-center gap-2 rounded-t-xl bg-neutral-800 px-3 py-2 text-sm font-bold uppercase tracking-wide text-white">
+                      <h3 className="mb-1 flex items-center gap-2 border-b border-black/10 pb-2 text-sm font-bold uppercase tracking-wide text-black/70">
                         {group.sectionName}
-                        <span className="ml-auto rounded-full bg-white/20 px-2 py-0.5 text-xs font-bold">
+                        <span className="ml-auto rounded-full bg-background px-2 py-0.5 text-xs font-bold text-black/55">
                           {group.items.length}
                         </span>
                       </h3>
@@ -1882,9 +1882,9 @@ export default function Home() {
                                     <SizeTiles map={item.presentSizesQty} variant="present" />
                                   </div>
                                   {item.color || item.colorName ? (
-                                    <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-black/55">
-                                      <span>color {formatLabelPart(item.color)}</span>
-                                      {item.colorName ? <ColorSwatch value={item.colorName} size={12} /> : null}
+                                    <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-black/45">
+                                      {item.colorName ? <ColorSwatch value={item.colorName} size={16} /> : null}
+                                      {item.color ? <span>{item.color}</span> : null}
                                     </p>
                                   ) : null}
                                   {item.warehouseNote ? (
@@ -1905,7 +1905,7 @@ export default function Home() {
             </section>
           </>
         ) : (
-          <section className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
+          <section className="px-1">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="text-xl font-semibold">Warehouse mode</h2>
@@ -1948,11 +1948,11 @@ export default function Home() {
                 {warehouseActiveGroups.map((group) => (
                   <div
                     key={group.sectionId}
-                    className="overflow-hidden rounded-xl border border-black/15 bg-white p-3"
+                    className="rounded-xl border border-black/10 bg-white p-3 shadow-sm"
                   >
-                    <h3 className="-mx-3 -mt-3 mb-2 flex items-center gap-2 rounded-t-xl bg-neutral-800 px-3 py-2 text-sm font-bold uppercase tracking-wide text-white">
+                    <h3 className="mb-1 flex items-center gap-2 border-b border-black/10 pb-2 text-sm font-bold uppercase tracking-wide text-black/70">
                       {group.sectionName}
-                      <span className="ml-auto rounded-full bg-white/20 px-2 py-0.5 text-xs font-bold">
+                      <span className="ml-auto rounded-full bg-background px-2 py-0.5 text-xs font-bold text-black/55">
                         {group.items.length}
                       </span>
                     </h3>
@@ -1994,8 +1994,8 @@ export default function Home() {
 
                           <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-black/55">
                             <span className="inline-flex items-center gap-1.5">
-                              color {formatLabelPart(item.color)}
-                              {item.colorName ? <ColorSwatch value={item.colorName} size={12} /> : null}
+                              {item.colorName ? <ColorSwatch value={item.colorName} size={16} /> : null}
+                              {item.color ? <span>{item.color}</span> : null}
                             </span>
                             <span>season {formatLabelPart(item.season)}</span>
                             <span className="inline-flex items-center gap-1.5">
@@ -2050,7 +2050,7 @@ export default function Home() {
             )}
 
             {warehouseDoneItems.length > 0 ? (
-              <div className="mt-3 rounded-xl border border-black/10 bg-background/60 p-3">
+              <div className="mt-4 rounded-xl border border-black/10 bg-white p-3 shadow-sm">
                 <button
                   type="button"
                   onClick={() => setShowDone((value) => !value)}
