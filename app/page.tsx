@@ -2000,8 +2000,20 @@ export default function Home() {
                               >
                                 {item.article}
                               </button>
-                              {item.colorName ? (
-                                <ColorSwatch value={item.colorName} size={22} />
+                              {item.colorName || item.color ? (
+                                <span
+                                  className="keep-color inline-block h-8 w-8 shrink-0 border border-black/20"
+                                  title={
+                                    item.colorName
+                                      ? resolveColor(item.colorName).label
+                                      : `color ${item.color ?? ""} (shade unknown)`
+                                  }
+                                  style={{
+                                    background: item.colorName
+                                      ? resolveColor(item.colorName).hex
+                                      : "repeating-linear-gradient(135deg, #ffffff 0 6px, #e0e0e0 6px 12px)",
+                                  }}
+                                />
                               ) : null}
                               {item.color ? (
                                 <span className="text-sm font-semibold text-black/45">
