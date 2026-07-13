@@ -1116,7 +1116,7 @@ export default function Home() {
                 autoCapitalize="none"
                 autoCorrect="off"
                 spellCheck={false}
-                className="mt-1 w-full rounded-lg border border-black/10 bg-background px-3 py-2.5 text-sm outline-none focus:border-accent"
+                className="mt-1 w-full rounded-lg border border-black/10 bg-background px-3 py-[15px] text-base outline-none focus:border-accent"
               />
             </label>
             <label className="block text-xs font-semibold uppercase tracking-wide text-black/55">
@@ -1125,7 +1125,7 @@ export default function Home() {
                 type="password"
                 value={authPassword}
                 onChange={(event) => setAuthPassword(event.target.value)}
-                className="mt-1 w-full rounded-lg border border-black/10 bg-background px-3 py-2.5 text-sm outline-none focus:border-accent"
+                className="mt-1 w-full rounded-lg border border-black/10 bg-background px-3 py-[15px] text-base outline-none focus:border-accent"
               />
             </label>
             {authError ? (
@@ -1253,11 +1253,11 @@ export default function Home() {
 
       <header className="rounded-2xl border border-black/10 bg-panel px-4 py-2.5 shadow-sm">
         <div className="flex items-center justify-between gap-3">
-          <p className="truncate text-sm font-bold uppercase tracking-[0.14em] text-accent">
-            Store replenishment
+          <p className="truncate text-base font-bold text-accent">
+            Replenishment
           </p>
           <div className="flex shrink-0 items-center gap-2">
-            <span className="text-xs font-semibold text-black/55">@{user.username}</span>
+            <span className="max-w-[96px] truncate text-xs font-semibold text-black/55">@{user.username}</span>
             <button
               type="button"
               onClick={() => void handleLogout()}
@@ -1314,7 +1314,7 @@ export default function Home() {
       <main className="mt-5 space-y-4">
         {mode === "hall" ? (
           <>
-            <section className="rounded-2xl border border-black/10 bg-panel p-5 shadow-sm">
+            <section className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
               <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
                 <h2 className="text-xl font-semibold">Hall mode</h2>
                 <span className="rounded-full bg-accent-soft px-3 py-1 text-xs font-semibold uppercase tracking-wider text-accent">
@@ -1322,12 +1322,16 @@ export default function Home() {
                 </span>
               </div>
 
-              <div className="rounded-xl border border-black/10 bg-white p-3">
+              <div>
                 <button
                   type="button"
                   disabled={scanBusy}
                   onClick={() => setShowLive(true)}
-                  className="flex w-full items-center justify-center rounded-xl bg-accent px-4 py-4 text-base font-semibold text-white active:scale-[0.99] disabled:opacity-60"
+                  className={`flex w-full items-center justify-center rounded-xl px-4 py-4 text-base font-semibold active:scale-[0.99] disabled:opacity-60 ${
+                    entryStarted
+                      ? "border border-black/15 bg-white text-black/70"
+                      : "bg-accent text-white"
+                  }`}
                 >
                   {scanBusy ? "Scanning..." : "Live scan"}
                 </button>
@@ -1380,13 +1384,15 @@ export default function Home() {
 
               {entryStarted ? (
                 <>
-              <div className="mt-3 rounded-xl border border-black/10 bg-white px-3 py-2">
+              <div className="mt-4 border-t border-black/10 pt-4">
                 <p className="text-xs font-semibold uppercase tracking-wider text-black/60">
                   Last parsed code
                 </p>
-                <p className="mt-1 text-sm font-semibold text-accent">
-                  {lastParsed?.rawLine || "-"}
-                </p>
+                {lastParsed?.rawLine ? (
+                  <p className="mt-1 text-sm font-semibold text-accent">
+                    {lastParsed.rawLine}
+                  </p>
+                ) : null}
                 <div className="mt-3 space-y-2">
                   <label className="block text-xs font-semibold uppercase tracking-wide text-black/55">
                     <span>article</span>
@@ -1400,7 +1406,7 @@ export default function Home() {
                         )
                       }
                       maxLength={7}
-                      className="mt-1 w-full rounded-lg border border-black/10 bg-background px-2 py-2 text-sm font-semibold text-black outline-none ring-0 focus:border-accent"
+                      className="mt-1 w-full rounded-lg border border-black/10 bg-background px-3 py-[13px] text-base font-semibold text-black outline-none ring-0 focus:border-accent"
                     />
                   </label>
 
@@ -1418,7 +1424,7 @@ export default function Home() {
                           )
                         }
                         maxLength={3}
-                        className="w-16 rounded-lg border border-black/10 bg-background px-2 py-2 text-sm font-semibold text-black outline-none ring-0 focus:border-accent"
+                        className="w-16 rounded-lg border border-black/10 bg-background px-3 py-[13px] text-base font-semibold text-black outline-none ring-0 focus:border-accent"
                       />
                       {COMMON_COLORS.map((swatch) => {
                         const selected = colorValue.toLowerCase() === swatch.name;
@@ -1489,7 +1495,7 @@ export default function Home() {
                           )
                         }
                         maxLength={1}
-                        className="mt-1 w-full rounded-lg border border-black/10 bg-background px-2 py-2 text-sm font-semibold text-black outline-none ring-0 focus:border-accent"
+                        className="mt-1 w-full rounded-lg border border-black/10 bg-background px-3 py-[13px] text-base font-semibold text-black outline-none ring-0 focus:border-accent"
                       />
                     </label>
                     <label className="block text-xs font-semibold uppercase tracking-wide text-black/55">
@@ -1504,14 +1510,14 @@ export default function Home() {
                           )
                         }
                         maxLength={4}
-                        className="mt-1 w-full rounded-lg border border-black/10 bg-background px-2 py-2 text-sm font-semibold text-black outline-none ring-0 focus:border-accent"
+                        className="mt-1 w-full rounded-lg border border-black/10 bg-background px-3 py-[13px] text-base font-semibold text-black outline-none ring-0 focus:border-accent"
                       />
                     </label>
                   </div>
                 </div>
               </div>
 
-              <div className="mt-3 rounded-xl border border-black/10 bg-white p-3">
+              <div className="mt-4 border-t border-black/10 pt-4">
                 <p className="text-xs font-semibold uppercase tracking-wider text-black/60">
                   On front
                 </p>
@@ -1540,7 +1546,7 @@ export default function Home() {
                 </div>
               </div>
 
-              <div className="mt-3 rounded-xl border border-black/10 bg-white p-3">
+              <div className="mt-4 border-t border-black/10 pt-4">
                 <p className="text-xs font-semibold uppercase tracking-wider text-black/60">
                   Size grid
                 </p>
@@ -1549,7 +1555,7 @@ export default function Home() {
                 </div>
               </div>
 
-              <div className="mt-3 rounded-xl border border-black/10 bg-white p-3">
+              <div className="mt-4 border-t border-black/10 pt-4">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-xs font-semibold uppercase tracking-wider text-black/60">
                     Choose existing sizes
@@ -1573,9 +1579,9 @@ export default function Home() {
                           [size]: (prev[size] ?? 0) + 1,
                         }));
                       }}
-                      className="min-h-14 rounded-xl border border-accent bg-accent-soft px-3 py-3 text-center transition-colors active:scale-[0.97]"
+                      className="min-h-14 rounded-xl border border-black/15 bg-background px-3 py-3 text-center transition-colors active:scale-[0.97]"
                     >
-                      <span className="text-sm font-semibold text-accent">{size}</span>
+                      <span className="text-base font-semibold text-black/75">{size}</span>
                     </button>
                   ))}
                 </div>
@@ -1604,7 +1610,7 @@ export default function Home() {
                 </div>
               </div>
 
-              <div className="mt-3 rounded-xl border border-black/10 bg-white p-3">
+              <div className="mt-4 border-t border-black/10 pt-4">
                 <p className="text-xs font-semibold uppercase tracking-wider text-black/60">
                   Suggested sizes
                 </p>
@@ -1624,7 +1630,7 @@ export default function Home() {
                 </div>
               </div>
 
-              <div className="mt-3 rounded-xl border border-black/10 bg-white p-3">
+              <div className="mt-4 border-t border-black/10 pt-4">
                 <p className="text-xs font-semibold uppercase tracking-wider text-black/60">
                   Comment
                 </p>
@@ -1633,7 +1639,7 @@ export default function Home() {
                   onChange={(event) => setNote(event.target.value)}
                   maxLength={500}
                   placeholder="Optional note"
-                  className="mt-2 w-full rounded-lg border border-black/10 bg-background px-2 py-2 text-sm text-black outline-none ring-0 focus:border-accent"
+                  className="mt-2 w-full rounded-lg border border-black/10 bg-background px-3 py-[13px] text-base text-black outline-none ring-0 focus:border-accent"
                 />
               </div>
 
@@ -1668,7 +1674,7 @@ export default function Home() {
               ) : null}
             </section>
 
-            <section className="rounded-2xl border border-black/10 bg-panel p-5 shadow-sm">
+            <section className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
               <h2 className="mb-4 text-xl font-semibold">Warehouse short list</h2>
               {hallBriefGroups.length === 0 ? (
                 <p className="text-sm text-black/60">No items added yet.</p>
@@ -1677,21 +1683,21 @@ export default function Home() {
                   {hallBriefGroups.map((group) => (
                     <div
                       key={group.sectionId}
-                      className="overflow-hidden rounded-xl border-2 border-accent/25 bg-white p-3 shadow-sm"
+                      className="overflow-hidden rounded-xl border border-black/15 bg-white p-3"
                     >
-                      <h3 className="-mx-3 -mt-3 mb-3 flex items-center gap-2 rounded-t-xl bg-accent px-3 py-2.5 text-base font-bold uppercase tracking-wide text-white">
+                      <h3 className="-mx-3 -mt-3 mb-3 flex items-center gap-2 rounded-t-xl bg-neutral-800 px-3 py-2 text-sm font-bold uppercase tracking-wide text-white">
                         {group.sectionName}
                         <span className="ml-auto rounded-full bg-white/20 px-2 py-0.5 text-xs font-bold">
                           {group.items.length}
                         </span>
                       </h3>
-                      <div className="mt-2 space-y-1.5">
+                      <div className="mt-1 divide-y divide-black/10">
                         {group.items.map((item) => {
                           const editing = editingId === item.id;
                           const editSel = selectableSizesFor(editSystem);
                           const editTokens = explodeSizeMap(editPresent, editSel);
                           return (
-                            <div key={item.id} className="rounded-lg bg-background px-3 py-2 text-sm">
+                            <div key={item.id} className="py-2.5 text-sm">
                               <div className="flex items-center justify-between gap-3">
                                 <span
                                   className={`truncate font-semibold ${
@@ -1731,7 +1737,7 @@ export default function Home() {
                                         inputMode="numeric"
                                         maxLength={7}
                                         onChange={(e) => setEditArticle(e.target.value.replace(/\D/g, "").slice(0, 7))}
-                                        className="mt-1 w-full rounded-lg border border-black/10 bg-white px-2 py-1.5 text-sm font-semibold outline-none focus:border-accent"
+                                        className="mt-1 w-full rounded-lg border border-black/10 bg-white px-3 py-[11px] text-base font-semibold outline-none focus:border-accent"
                                       />
                                     </label>
                                     <label className="text-[11px] font-semibold uppercase tracking-wide text-black/50">
@@ -1741,7 +1747,7 @@ export default function Home() {
                                         inputMode="numeric"
                                         maxLength={1}
                                         onChange={(e) => setEditSeason(e.target.value.replace(/\D/g, "").slice(0, 1))}
-                                        className="mt-1 w-full rounded-lg border border-black/10 bg-white px-2 py-1.5 text-sm font-semibold outline-none focus:border-accent"
+                                        className="mt-1 w-full rounded-lg border border-black/10 bg-white px-3 py-[11px] text-base font-semibold outline-none focus:border-accent"
                                       />
                                     </label>
                                     <label className="text-[11px] font-semibold uppercase tracking-wide text-black/50">
@@ -1751,7 +1757,7 @@ export default function Home() {
                                         inputMode="numeric"
                                         maxLength={4}
                                         onChange={(e) => setEditStorage(e.target.value.replace(/\D/g, "").slice(0, 4))}
-                                        className="mt-1 w-full rounded-lg border border-black/10 bg-white px-2 py-1.5 text-sm font-semibold outline-none focus:border-accent"
+                                        className="mt-1 w-full rounded-lg border border-black/10 bg-white px-3 py-[11px] text-base font-semibold outline-none focus:border-accent"
                                       />
                                     </label>
                                   </div>
@@ -1765,7 +1771,7 @@ export default function Home() {
                                         maxLength={3}
                                         aria-label="color code"
                                         onChange={(e) => setEditColor(e.target.value.replace(/\D/g, "").slice(0, 3))}
-                                        className="w-14 rounded-lg border border-black/10 bg-white px-2 py-1.5 text-sm font-semibold outline-none focus:border-accent"
+                                        className="w-14 rounded-lg border border-black/10 bg-white px-3 py-[11px] text-base font-semibold outline-none focus:border-accent"
                                       />
                                       {COMMON_COLORS.map((sw) => {
                                         const sel = editColorName.toLowerCase() === sw.name;
@@ -1821,7 +1827,7 @@ export default function Home() {
                                           onClick={() =>
                                             setEditPresent((p) => ({ ...p, [size]: (p[size] ?? 0) + 1 }))
                                           }
-                                          className="min-h-10 rounded-lg border border-accent bg-accent-soft px-1 py-1.5 text-center text-xs font-semibold text-accent active:scale-[0.97]"
+                                          className="min-h-10 rounded-lg border border-black/15 bg-background px-1 py-1.5 text-center text-xs font-semibold text-black/70 active:scale-[0.97]"
                                         >
                                           {size}
                                         </button>
@@ -1899,7 +1905,7 @@ export default function Home() {
             </section>
           </>
         ) : (
-          <section className="rounded-2xl border border-black/10 bg-panel p-5 shadow-sm">
+          <section className="rounded-2xl border border-black/10 bg-white p-4 shadow-sm">
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="text-xl font-semibold">Warehouse mode</h2>
@@ -1942,9 +1948,9 @@ export default function Home() {
                 {warehouseActiveGroups.map((group) => (
                   <div
                     key={group.sectionId}
-                    className="overflow-hidden rounded-xl border-2 border-accent/25 bg-white p-3 shadow-sm"
+                    className="overflow-hidden rounded-xl border border-black/15 bg-white p-3"
                   >
-                    <h3 className="-mx-3 -mt-3 mb-2 flex items-center gap-2 rounded-t-xl bg-accent px-3 py-2.5 text-base font-bold uppercase tracking-wide text-white">
+                    <h3 className="-mx-3 -mt-3 mb-2 flex items-center gap-2 rounded-t-xl bg-neutral-800 px-3 py-2 text-sm font-bold uppercase tracking-wide text-white">
                       {group.sectionName}
                       <span className="ml-auto rounded-full bg-white/20 px-2 py-0.5 text-xs font-bold">
                         {group.items.length}
