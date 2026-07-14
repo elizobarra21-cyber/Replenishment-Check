@@ -42,25 +42,6 @@ body {
   font-family: "SuisseIntl", "Suisse Intl", "Helvetica Neue", Helvetica, Arial, sans-serif;
 }
 
-/* Warehouse dark theme: invert the light UI while roughly preserving hues.
-   Elements that must keep their true colors (photos, color swatches) carry
-   .keep-color, which re-inverts them back inside an inverted subtree. */
-.mode-transition {
-  filter: invert(0) hue-rotate(0deg);
-  transition: filter 450ms ease;
-}
-.invert-dark {
-  filter: invert(1) hue-rotate(180deg);
-}
-.invert-dark .keep-color {
-  filter: invert(1) hue-rotate(180deg);
-}
-
-/* Item cards need a stronger outline on the dark (inverted) background. */
-.invert-dark .group-card {
-  border-color: rgb(0 0 0 / 0.35);
-}
-
 /* Fade/slide-in when switching between hall and warehouse modes. */
 @keyframes mode-enter {
   from {

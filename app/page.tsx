@@ -216,6 +216,21 @@ function storageGroupName(storageSection: string | null | undefined) {
   return normalized ? `Department ${normalized}` : "No department";
 }
 
+// Render a group heading as "DEPARTMENT" at 60% opacity + the number at full
+// opacity, so the number stands out over the generic label word.
+function SectionHeadingText({ text }: { text: string }) {
+  const match = text.match(/^(\D+)(\S+)?$/);
+  if (!match || !match[2]) {
+    return <span className="text-black/60">{text}</span>;
+  }
+  return (
+    <>
+      <span className="text-black/60">{match[1]}</span>
+      <span className="text-black">{match[2]}</span>
+    </>
+  );
+}
+
 function groupItemsBySection(items: RequestItem[]) {
   return [...items].sort(compareRequestItems).reduce<WarehouseGroup[]>((acc, item) => {
     const sectionId = storageGroupId(item.storageSection);
@@ -334,7 +349,7 @@ function ColorSwatch({ value, size = 14 }: { value: string; size?: number }) {
   return (
     <span
       aria-hidden
-      className="keep-color inline-block shrink-0 rounded-full border border-black/20 align-middle"
+      className="inline-block shrink-0 rounded-full border border-black/20 align-middle"
       style={{ width: size, height: size, backgroundColor: resolveColor(value).hex }}
     />
   );
@@ -1186,12 +1201,12 @@ export default function Home() {
   return (
     <div
       className={`mx-auto flex min-h-screen w-full max-w-6xl flex-col p-4 transition-colors duration-500 md:p-8 ${
-        dark ? "bg-[#0a0a0a]" : "bg-background"
+        dark ? "bg-[#ececec]" : "bg-background"
       }`}
     >
       {photoViewer ? (
         <div
-          className={`fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4 ${dark ? "invert-dark" : ""}`}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4"
           role="dialog"
           aria-modal="true"
           aria-label={`Scan photo for article ${photoViewer.article}`}
@@ -1214,7 +1229,7 @@ export default function Home() {
             <img
               src={photoViewer.url}
               alt={`Scanned label for article ${photoViewer.article}`}
-              className="keep-color max-h-[75vh] w-full rounded-xl bg-background object-contain"
+              className="max-h-[75vh] w-full rounded-xl bg-background object-contain"
             />
           </div>
         </div>
@@ -1226,7 +1241,7 @@ export default function Home() {
 
       {showFinishModal ? (
         <div
-          className={`fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 ${dark ? "invert-dark" : ""}`}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
           role="dialog"
           aria-modal="true"
           aria-label="Finish replenishment"
@@ -1278,7 +1293,7 @@ export default function Home() {
         </div>
       ) : null}
 
-      <header className={`px-1 mode-transition ${dark ? "invert-dark" : ""}`}>
+      <header className="px-1">
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2.5">
             <CosLogo className="h-4 w-12 shrink-0 text-black" />
@@ -1341,7 +1356,7 @@ export default function Home() {
         ) : null}
       </header>
 
-      <main className={`mt-8 mode-transition ${dark ? "invert-dark" : ""}`}>
+      <main className="mt-8">
         <div key={mode} className="mode-enter space-y-10">
         {mode === "hall" ? (
           <>
@@ -1707,10 +1722,10 @@ export default function Home() {
                   {hallBriefGroups.map((group) => (
                     <div
                       key={group.sectionId}
-                      className="group-card border border-black/10 bg-white p-3"
+                      className="border border-black/10 bg-white p-3"
                     >
-                      <h3 className="mb-1 flex items-center gap-2 border-b border-black/10 pb-2 text-[13px] font-semibold uppercase tracking-[0.04em] text-black">
-                        {group.sectionName}
+                      <h3 className="mb-1 flex items-center gap-2 border-b border-black/10 pb-2 text-[13px] font-semibold uppercase tracking-[0.04em]">
+                        <SectionHeadingText text={group.sectionName} />
                         <span className="ml-auto rounded-full bg-background px-2 py-0.5 text-xs font-bold text-black/55">
                           {group.items.length}
                         </span>
@@ -1970,10 +1985,10 @@ export default function Home() {
                 {warehouseActiveGroups.map((group) => (
                   <div
                     key={group.sectionId}
-                    className="group-card border border-black/10 bg-white p-3"
+                    className="border border-black/10 bg-white p-3"
                   >
-                    <h3 className="mb-1 flex items-center gap-2 border-b border-black/10 pb-2 text-[13px] font-semibold uppercase tracking-[0.04em] text-black/80">
-                      {group.sectionName}
+                    <h3 className="mb-1 flex items-center gap-2 border-b border-black/10 pb-2 text-[13px] font-semibold uppercase tracking-[0.04em]">
+                      <SectionHeadingText text={group.sectionName} />
                       <span className="ml-auto rounded-full bg-background px-2 py-0.5 text-xs font-bold text-black/55">
                         {group.items.length}
                       </span>
@@ -1995,7 +2010,7 @@ export default function Home() {
                               </button>
                               {item.colorName || item.color ? (
                                 <span
-                                  className="keep-color inline-block h-8 w-8 shrink-0 border border-black/20"
+                                  className="inline-block h-8 w-8 shrink-0 border border-black/20"
                                   title={
                                     item.colorName
                                       ? resolveColor(item.colorName).label
