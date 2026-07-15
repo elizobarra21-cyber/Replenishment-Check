@@ -358,27 +358,34 @@ function ColorSwatch({ value, size = 14 }: { value: string; size?: number }) {
 function SizeTiles({
   map,
   variant,
+  tileSize = "sm",
 }: {
   map: SizeQtyMap;
   variant: "need" | "present";
+  tileSize?: "sm" | "lg";
 }) {
   const tokens = explodeSizeMap(map, inferOrderedSizes(map));
   if (!tokens.length) {
     return <span className="text-sm text-black/35">-</span>;
   }
 
+  const sizing =
+    tileSize === "lg"
+      ? "min-w-10 px-2.5 py-2 text-sm"
+      : "min-w-7 px-1.5 py-1 text-xs";
+
   return (
-    <span className="inline-flex flex-wrap gap-1 align-middle">
-      {tokens.map((size, index) => (
+    <span className={`inline-flex flex-wrap align-middle ${tileSize === "lg" ? "gap-1.5" : "gap-1"}`}>
+      {tokens.map((token, index) => (
         <span
-          key={`${size}-${index}`}
-          className={
+          key={`${token}-${index}`}
+          className={`inline-flex justify-center font-bold ${sizing} ${
             variant === "need"
-              ? "inline-flex min-w-7 justify-center rounded-md bg-accent px-1.5 py-1 text-xs font-bold text-white"
-              : "inline-flex min-w-7 justify-center rounded-md border border-black/15 bg-white px-1.5 py-1 text-xs font-semibold text-black/55"
-          }
+              ? "bg-accent text-white"
+              : "border border-black/15 bg-white text-black/55 font-semibold"
+          }`}
         >
-          {size}
+          {token}
         </span>
       ))}
     </span>
@@ -1996,52 +2003,53 @@ export default function Home() {
                     <div className="mt-1.5 divide-y divide-black/5">
                       {group.items.map((item) => (
                         <article key={item.id} className="py-2 first:pt-0 last:pb-0">
-                          <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-                            <div className="flex items-center gap-2.5">
-                              <button
-                                type="button"
-                                onClick={() => openScanPhoto(item)}
-                                title={item.labelPhotoUrl ? "Open scan photo" : "No scan photo saved"}
-                                className={`text-left text-3xl font-bold tracking-tight text-accent underline decoration-accent/25 underline-offset-[6px] ${
-                                  item.pickStatus ? "opacity-50 line-through" : ""
-                                }`}
-                              >
-                                {item.article}
-                              </button>
-                              {item.colorName || item.color ? (
-                                <span
-                                  className="inline-block h-8 w-8 shrink-0 border border-black/20"
-                                  title={
-                                    item.colorName
-                                      ? resolveColor(item.colorName).label
-                                      : `color ${item.color ?? ""} (shade unknown)`
-                                  }
-                                  style={{
-                                    background: item.colorName
-                                      ? resolveColor(item.colorName).hex
-                                      : "repeating-linear-gradient(135deg, #ffffff 0 6px, #e0e0e0 6px 12px)",
-                                  }}
-                                />
-                              ) : null}
-                              {item.color ? (
-                                <span className="text-sm font-semibold text-black/45">
-                                  {item.color}
-                                </span>
-                              ) : null}
-                              <span className="shrink-0 rounded-full bg-accent-soft px-2 py-0.5 text-xs font-bold text-accent">
-                                {presentTotal(item.presentSizesQty)}/{itemTargetCount(item)}
+                          <div className="flex flex-wrap items-center gap-2.5">
+                            <button
+                              type="button"
+                              onClick={() => openScanPhoto(item)}
+                              title={item.labelPhotoUrl ? "Open scan photo" : "No scan photo saved"}
+                              className={`text-left text-3xl font-bold tracking-tight text-accent underline decoration-accent/25 underline-offset-[6px] ${
+                                item.pickStatus ? "opacity-50 line-through" : ""
+                              }`}
+                            >
+                              {item.article}
+                            </button>
+                            {item.colorName || item.color ? (
+                              <span
+                                className="inline-block h-8 w-8 shrink-0 border border-black/20"
+                                title={
+                                  item.colorName
+                                    ? resolveColor(item.colorName).label
+                                    : `color ${item.color ?? ""} (shade unknown)`
+                                }
+                                style={{
+                                  background: item.colorName
+                                    ? resolveColor(item.colorName).hex
+                                    : "repeating-linear-gradient(135deg, #ffffff 0 6px, #e0e0e0 6px 12px)",
+                                }}
+                              />
+                            ) : null}
+                            {item.color ? (
+                              <span className="text-sm font-semibold text-black/45">
+                                {item.color}
                               </span>
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-xs font-semibold uppercase tracking-wide text-accent">
-                                need
-                              </span>
-                              <SizeTiles map={item.neededSizesQty} variant="need" />
+                            ) : null}
+                            <span className="shrink-0 rounded-full bg-accent-soft px-2 py-0.5 text-xs font-bold text-accent">
+                              {presentTotal(item.presentSizesQty)}/{itemTargetCount(item)}
+                            </span>
+                          </div>
+
+                          <div className="mt-2.5">
+                            <span className="text-xs font-semibold uppercase tracking-wide text-accent">
+                              need
+                            </span>
+                            <div className="mt-1.5 flex flex-wrap gap-1.5">
+                              <SizeTiles map={item.neededSizesQty} variant="need" tileSize="lg" />
                               {optionalHintSizes(item).map((size) => (
                                 <span
                                   key={`opt-${size}`}
                                   title={`Optional: bring ${size} if available`}
-                                  className="inline-flex min-w-7 justify-center rounded-md border border-dashed border-black/30 bg-white px-1.5 py-1 text-xs font-semibold text-black/40"
+                                  className="inline-flex min-w-10 justify-center border border-dashed border-black/30 bg-white px-2.5 py-2 text-sm font-semibold text-black/40"
                                 >
                                   {size}?
                                 </span>
@@ -2049,7 +2057,7 @@ export default function Home() {
                             </div>
                           </div>
 
-                          <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-black/55">
+                          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-black/55">
                             <span>season {formatLabelPart(item.season)}</span>
                             <span className="inline-flex items-center gap-1.5">
                               present
