@@ -119,3 +119,22 @@ export async function PATCH(
 
   return NextResponse.json({ item: updated });
 }
+
+export async function DELETE(
+  request: Request,
+  context: { params: Promise<{ id: string }> },
+) {
+  if (!getSessionUser(request)) {
+    return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+  }
+
+  const { id } = await context.params;
+  const existing = await prisma.requestItem.findUnique({ where: { id } });
+  if (!existing) {
+    return NextResponse.json({ error: "Item not found" }, { status: 404 });
+  }
+
+  await prisma.requestItem.delete({ where: { id } });
+
+  return NextResponse.json({ ok: true });
+}

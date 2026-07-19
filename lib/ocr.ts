@@ -399,26 +399,6 @@ export async function readLabelCandidates(file: File): Promise<string[]> {
   return candidates;
 }
 
-/**
- * Recognize an already-cropped canvas (e.g. the live-scanner mask window) with
- * the digit worker and return candidate strings, best first. Used by the live
- * camera loop to detect when the label code is inside the frame.
- */
-export async function recognizeStripCanvas(
-  canvas: HTMLCanvasElement,
-): Promise<string[]> {
-  const worker = await getOcrWorker();
-  const res = await worker.recognize(canvas, undefined, { text: true, blocks: true });
-
-  const candidates: string[] = [];
-  const seen = new Set<string>();
-  for (const line of flattenLines(res.data).sort((a, b) => a.y - b.y)) {
-    pushUnique(candidates, seen, line.text);
-  }
-  pushUnique(candidates, seen, res.data.text ?? "");
-  return candidates;
-}
-
 // Raw size token from the label's EUR line. The caller combines this with the
 // department (men's if it starts with 45) to pick the concrete size system.
 export type SizeDetection = { kind: "letter" } | { kind: "number"; value: number };

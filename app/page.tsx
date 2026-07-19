@@ -1,7 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent } from "react";
-import dynamic from "next/dynamic";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import {
   HALL_REQUIRED_SIZES,
   ALL_SIZE_SYSTEMS,
@@ -30,11 +29,6 @@ import {
   warmUpOcr,
 } from "@/lib/ocr";
 import { COMMON_COLORS, isHexColor, resolveColor } from "@/lib/colors";
-
-// Client-only live camera scanner; kept out of the initial bundle.
-const LiveScanner = dynamic(() => import("./components/LiveScanner"), {
-  ssr: false,
-});
 
 type SizeQtyMap = Record<string, number>;
 
@@ -345,6 +339,81 @@ function CosLogo({ className }: { className?: string }) {
   );
 }
 
+// Minimal line-art icons (stroke, no fill) matching the flat COS aesthetic.
+function PencilIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      <path d="M13.4 3.3 16.7 6.6 6.6 16.7H3.3v-3.3L13.4 3.3Z" />
+    </svg>
+  );
+}
+
+function CloseIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      className={className}
+      aria-hidden
+    >
+      <path d="M4.5 4.5 15.5 15.5M15.5 4.5 4.5 15.5" />
+    </svg>
+  );
+}
+
+function TrashIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 20 20"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.4"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      <path d="M4 6h12M8 6V4.3h4V6M6 6l.7 10h6.6L14 6M8.3 9v4M11.7 9v4" />
+    </svg>
+  );
+}
+
+// Small square icon button (bordered, no fill/shadow) shared by edit/delete
+// affordances so they read as one minimal control language across the app.
+function IconButton({
+  onClick,
+  label,
+  children,
+}: {
+  onClick: () => void;
+  label: string;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className="inline-flex h-8 w-8 shrink-0 items-center justify-center border border-black/15 bg-white text-black active:scale-90"
+    >
+      {children}
+    </button>
+  );
+}
+
 function ColorSwatch({ value, size = 14 }: { value: string; size?: number }) {
   return (
     <span
@@ -509,6 +578,10 @@ export default function Home() {
   const [authBusy, setAuthBusy] = useState(false);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [showSessions, setShowSessions] = useState(false);
+  // Expand-in-place: full item list of a past session, fetched on first tap.
+  const [expandedSessionId, setExpandedSessionId] = useState<string | null>(null);
+  const [sessionItems, setSessionItems] = useState<Record<string, RequestItem[]>>({});
+  const [sessionItemsLoading, setSessionItemsLoading] = useState<string | null>(null);
   const [requestId, setRequestId] = useState("");
   const [presentSizesQty, setPresentSizesQty] = useState<SizeQtyMap>({});
   const [draftItems, setDraftItems] = useState<RequestItem[]>([]);
@@ -536,8 +609,6 @@ export default function Home() {
   // Finish confirmation modal + "send report" choice (report emailing is #5).
   const [showFinishModal, setShowFinishModal] = useState(false);
   const [sendReport, setSendReport] = useState(false);
-  // Live camera scanner overlay.
-  const [showLive, setShowLive] = useState(false);
   // Inline editing of an already-added item (expanded row).
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editArticle, setEditArticle] = useState("");
@@ -547,6 +618,11 @@ export default function Home() {
   const [editStorage, setEditStorage] = useState("");
   const [editPresent, setEditPresent] = useState<SizeQtyMap>({});
   const [editSystem, setEditSystem] = useState<SizeSystem>("letter");
+  const [editFrontSize, setEditFrontSize] = useState<number | null>(null);
+  // Delete confirmation modal (replaces window.confirm, which can hang/behave
+  // inconsistently inside a Telegram WebView).
+  const [deleteTarget, setDeleteTarget] = useState<RequestItem | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
 
   useEffect(() => {
     // Check for an existing session before doing anything else.
@@ -729,6 +805,29 @@ export default function Home() {
     }
   }
 
+  async function toggleSessionExpand(id: string) {
+    if (expandedSessionId === id) {
+      setExpandedSessionId(null);
+      return;
+    }
+    setExpandedSessionId(id);
+    if (sessionItems[id]) {
+      return;
+    }
+    setSessionItemsLoading(id);
+    try {
+      const res = await fetch(`/api/requests/${id}`);
+      const json = await res.json();
+      if (res.ok) {
+        setSessionItems((prev) => ({ ...prev, [id]: (json.request?.items ?? []) as RequestItem[] }));
+      }
+    } catch {
+      // ignore - the item list stays collapsed/empty on failure
+    } finally {
+      setSessionItemsLoading((current) => (current === id ? null : current));
+    }
+  }
+
   useEffect(() => {
     if (user) {
       void loadSessions();
@@ -773,11 +872,6 @@ export default function Home() {
     setEntryStarted(false);
     setLastParsed(null);
     setMode("hall");
-  }
-
-  function handleLiveCapture(file: File) {
-    setShowLive(false);
-    void handleScanLabel(file);
   }
 
   async function handleScanLabel(file: File | null) {
@@ -1076,6 +1170,7 @@ export default function Home() {
     setEditStorage(item.storageSection ?? "");
     setEditPresent({ ...(item.presentSizesQty ?? {}) });
     setEditSystem(itemSizeSystem(item));
+    setEditFrontSize(item.frontSize ?? null);
   }
 
   async function saveEdit(item: RequestItem) {
@@ -1093,7 +1188,7 @@ export default function Home() {
           storageSection: editStorage,
           presentSizesQty: editPresent,
           sizeSystem: editSystem,
-          frontSize: item.frontSize ?? null,
+          frontSize: editFrontSize,
         }),
       });
       const json = await res.json();
@@ -1115,6 +1210,36 @@ export default function Home() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function handleDeleteItem(item: RequestItem) {
+    setDeleteBusy(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/items/${item.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        throw new Error("Unable to delete item");
+      }
+    } catch {
+      setError("Could not delete the item. Check connection and retry.");
+      setDeleteBusy(false);
+      return;
+    }
+
+    setDraftItems((items) => items.filter((entry) => entry.id !== item.id));
+    setWarehouseGroups((groups) =>
+      groups
+        .map((group) => ({
+          ...group,
+          items: group.items.filter((entry) => entry.id !== item.id),
+        }))
+        .filter((group) => group.items.length > 0),
+    );
+    if (editingId === item.id) {
+      setEditingId(null);
+    }
+    setDeleteBusy(false);
+    setDeleteTarget(null);
   }
 
   function openScanPhoto(item: RequestItem) {
@@ -1242,8 +1367,42 @@ export default function Home() {
         </div>
       ) : null}
 
-      {showLive ? (
-        <LiveScanner onCapture={handleLiveCapture} onClose={() => setShowLive(false)} />
+      {deleteTarget ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Delete item"
+          onClick={() => !deleteBusy && setDeleteTarget(null)}
+        >
+          <div
+            className="w-full max-w-sm border border-black/10 bg-white p-5"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2 className="text-lg font-semibold">Delete {deleteTarget.article}?</h2>
+            <p className="mt-1 text-sm text-black/60">
+              This removes the item from the current list. This cannot be undone.
+            </p>
+            <div className="mt-5 flex gap-2">
+              <button
+                type="button"
+                disabled={deleteBusy}
+                onClick={() => setDeleteTarget(null)}
+                className="flex-1 border border-black/15 bg-white px-4 py-3.5 text-[13px] font-medium uppercase tracking-[0.04em] text-black/70 disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={deleteBusy}
+                onClick={() => void handleDeleteItem(deleteTarget)}
+                className="flex-1 bg-danger px-4 py-3.5 text-[13px] font-medium uppercase tracking-[0.04em] text-white disabled:opacity-60"
+              >
+                {deleteBusy ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
 
       {showFinishModal ? (
@@ -1335,29 +1494,66 @@ export default function Home() {
           sessions.length === 0 ? (
             <p className="mt-1.5 text-xs text-black/45">No past sessions yet.</p>
           ) : (
-            <ul className="mt-1.5 divide-y divide-black/5 border-t border-black/5 pt-1">
-              {sessions.map((s) => (
-                <li
-                  key={s.id}
-                  className="flex items-center justify-between gap-2 py-1.5 text-xs"
-                >
-                  <span className="text-black/60">
-                    {new Date(s.createdAt).toLocaleString()}
-                  </span>
-                  <span className="flex shrink-0 items-center gap-2">
-                    <span className="text-black/45">{s._count.items} items</span>
-                    <span
-                      className={`rounded-full px-2 py-0.5 font-semibold ${
-                        s.status === "DONE"
-                          ? "bg-accent-soft text-accent"
-                          : "bg-background text-black/50"
-                      }`}
+            <ul className="mt-1.5 divide-y divide-black/5 border-t border-black/5">
+              {sessions.map((s) => {
+                const expanded = expandedSessionId === s.id;
+                const items = sessionItems[s.id];
+                const loading = sessionItemsLoading === s.id;
+                return (
+                  <li key={s.id} className="py-1.5 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => void toggleSessionExpand(s.id)}
+                      className="flex w-full items-center justify-between gap-2 text-left"
                     >
-                      {s.status.toLowerCase()}
-                    </span>
-                  </span>
-                </li>
-              ))}
+                      <span className="text-black/60">
+                        {new Date(s.createdAt).toLocaleString()}
+                      </span>
+                      <span className="flex shrink-0 items-center gap-2">
+                        <span className="text-black/45">{s._count.items} items</span>
+                        <span
+                          className={`rounded-full px-2 py-0.5 font-semibold ${
+                            s.status === "DONE"
+                              ? "bg-accent-soft text-accent"
+                              : "bg-background text-black/50"
+                          }`}
+                        >
+                          {s.status.toLowerCase()}
+                        </span>
+                        <span className="text-black/30">{expanded ? "▲" : "▼"}</span>
+                      </span>
+                    </button>
+                    {expanded ? (
+                      <div className="mt-1.5 border-t border-black/5 pt-1.5">
+                        {loading ? (
+                          <p className="text-black/40">Loading...</p>
+                        ) : !items || items.length === 0 ? (
+                          <p className="text-black/40">No items.</p>
+                        ) : (
+                          <ul className="space-y-1">
+                            {items.map((item) => (
+                              <li
+                                key={item.id}
+                                className="flex items-center justify-between gap-2"
+                              >
+                                <span className="truncate text-black/70">
+                                  {item.article}
+                                  <span className="ml-1.5 text-black/35">
+                                    {storageGroupName(item.storageSection)}
+                                  </span>
+                                </span>
+                                <span className="shrink-0 font-semibold text-black/50">
+                                  {presentTotal(item.presentSizesQty)}/{itemTargetCount(item)}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    ) : null}
+                  </li>
+                );
+              })}
             </ul>
           )
         ) : null}
@@ -1376,34 +1572,26 @@ export default function Home() {
               </div>
 
               <div>
-                <button
-                  type="button"
-                  disabled={scanBusy}
-                  onClick={() => setShowLive(true)}
-                  className={`flex w-full items-center justify-center rounded-xl px-4 py-4 text-[13px] font-medium uppercase tracking-[0.04em] active:scale-[0.99] disabled:opacity-60 ${
-                    entryStarted
-                      ? "border border-black/15 bg-white text-black/70"
-                      : "bg-accent text-white"
+                <label
+                  className={`flex w-full cursor-pointer items-center justify-center bg-accent px-4 py-4 text-[13px] font-medium uppercase tracking-[0.04em] text-white active:scale-[0.99] ${
+                    scanBusy ? "opacity-60" : ""
                   }`}
                 >
-                  {scanBusy ? "Scanning..." : "Live scan"}
-                </button>
+                  {scanBusy ? "Scanning..." : "Scan photo"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    capture="environment"
+                    className="hidden"
+                    disabled={scanBusy}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0] ?? null;
+                      void handleScanLabel(file);
+                      event.currentTarget.value = "";
+                    }}
+                  />
+                </label>
                 <div className="mt-2 mb-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-1 text-xs font-semibold text-black/45">
-                  <label className="cursor-pointer underline underline-offset-2 hover:text-black/70">
-                    {scanBusy ? "..." : "Scan photo"}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      className="hidden"
-                      disabled={scanBusy}
-                      onChange={(event) => {
-                        const file = event.target.files?.[0] ?? null;
-                        void handleScanLabel(file);
-                        event.currentTarget.value = "";
-                      }}
-                    />
-                  </label>
                   <label className="cursor-pointer underline underline-offset-2 hover:text-black/70">
                     {scanBusy ? "..." : "Gallery"}
                     <input
@@ -1731,7 +1919,7 @@ export default function Home() {
                       key={group.sectionId}
                       className="border border-black/10 bg-white p-3"
                     >
-                      <h3 className="mb-1 flex items-center gap-2 border-b border-black/10 pb-2 text-[13px] font-semibold uppercase tracking-[0.04em]">
+                      <h3 className="mb-2 flex items-center gap-2 border-b border-black/10 pb-2.5 text-lg font-extrabold uppercase tracking-[0.02em]">
                         <SectionHeadingText text={group.sectionName} />
                         <span className="ml-auto rounded-full bg-background px-2 py-0.5 text-xs font-bold text-black/55">
                           {group.items.length}
@@ -1746,30 +1934,32 @@ export default function Home() {
                             <div key={item.id} className="py-2.5 text-sm">
                               <div className="flex items-center justify-between gap-3">
                                 <span
-                                  className={`truncate font-semibold ${
-                                    item.pickStatus ? "text-black/40 line-through" : ""
+                                  className={`truncate text-base font-bold ${
+                                    item.pickStatus ? "text-black/40 line-through" : "text-black"
                                   }`}
                                 >
                                   {item.article}
                                 </span>
                                 <div className="flex shrink-0 items-center gap-2">
-                                  <span className="rounded-full bg-accent-soft px-2.5 py-0.5 text-sm font-bold text-accent">
+                                  <span className="text-base font-bold text-accent">
                                     {presentTotal(item.presentSizesQty)} / {itemTargetCount(item)}
                                   </span>
-                                  <button
-                                    type="button"
+                                  <IconButton
                                     onClick={() => (editing ? setEditingId(null) : openEdit(item))}
-                                    aria-label={editing ? "Close editor" : "Edit item"}
-                                    aria-pressed={editing}
-                                    title={editing ? "Close" : "Edit"}
-                                    className={`inline-flex h-8 w-8 items-center justify-center rounded-full border text-base leading-none transition-colors active:scale-90 ${
-                                      editing
-                                        ? "border-accent bg-accent text-white"
-                                        : "border-black/15 text-black/55"
-                                    }`}
+                                    label={editing ? "Close editor" : "Edit item"}
                                   >
-                                    {editing ? "×" : "✏"}
-                                  </button>
+                                    {editing ? (
+                                      <CloseIcon className="h-4 w-4" />
+                                    ) : (
+                                      <PencilIcon className="h-4 w-4" />
+                                    )}
+                                  </IconButton>
+                                  <IconButton
+                                    onClick={() => setDeleteTarget(item)}
+                                    label="Delete item"
+                                  >
+                                    <TrashIcon className="h-4 w-4" />
+                                  </IconButton>
                                 </div>
                               </div>
 
@@ -1845,6 +2035,35 @@ export default function Home() {
                                           ×
                                         </button>
                                       ) : null}
+                                    </div>
+                                  </div>
+
+                                  <div className="text-[11px] font-semibold uppercase tracking-wide text-black/50">
+                                    on front
+                                    <div className="mt-1 flex gap-1.5">
+                                      {(
+                                        [
+                                          ["No", null],
+                                          ["Front 6", 6],
+                                          ["Front 8", 8],
+                                        ] as const
+                                      ).map(([label, value]) => {
+                                        const active = editFrontSize === value;
+                                        return (
+                                          <button
+                                            key={label}
+                                            type="button"
+                                            onClick={() => setEditFrontSize(value)}
+                                            className={`flex-1 border px-2 py-1.5 text-xs font-semibold transition-colors active:scale-[0.98] ${
+                                              active
+                                                ? "border-accent bg-accent-soft text-accent"
+                                                : "border-black/10 bg-white text-black/60"
+                                            }`}
+                                          >
+                                            {label}
+                                          </button>
+                                        );
+                                      })}
                                     </div>
                                   </div>
 
@@ -1994,7 +2213,7 @@ export default function Home() {
                     key={group.sectionId}
                     className="border border-black/10 bg-white p-3"
                   >
-                    <h3 className="mb-1 flex items-center gap-2 border-b border-black/10 pb-2 text-[13px] font-semibold uppercase tracking-[0.04em]">
+                    <h3 className="mb-2 flex items-center gap-2 border-b border-black/10 pb-2.5 text-lg font-extrabold uppercase tracking-[0.02em]">
                       <SectionHeadingText text={group.sectionName} />
                       <span className="ml-auto rounded-full bg-background px-2 py-0.5 text-xs font-bold text-black/55">
                         {group.items.length}
@@ -2003,17 +2222,31 @@ export default function Home() {
                     <div className="mt-1.5 divide-y divide-black/5">
                       {group.items.map((item) => (
                         <article key={item.id} className="py-2 first:pt-0 last:pb-0">
-                          <div className="flex flex-wrap items-center gap-2.5">
+                          <div className="flex items-center justify-between gap-3">
                             <button
                               type="button"
                               onClick={() => openScanPhoto(item)}
                               title={item.labelPhotoUrl ? "Open scan photo" : "No scan photo saved"}
-                              className={`text-left text-3xl font-bold tracking-tight text-accent underline decoration-accent/25 underline-offset-[6px] ${
+                              className={`text-left text-base font-bold text-accent underline decoration-accent/25 underline-offset-4 ${
                                 item.pickStatus ? "opacity-50 line-through" : ""
                               }`}
                             >
                               {item.article}
                             </button>
+                            <div className="flex shrink-0 items-center gap-2">
+                              <span className="text-base font-bold text-accent">
+                                {presentTotal(item.presentSizesQty)}/{itemTargetCount(item)}
+                              </span>
+                              <IconButton
+                                onClick={() => setDeleteTarget(item)}
+                                label="Delete item"
+                              >
+                                <TrashIcon className="h-4 w-4" />
+                              </IconButton>
+                            </div>
+                          </div>
+
+                          <div className="mt-1.5 flex flex-wrap items-center gap-2">
                             {item.colorName || item.color ? (
                               <span
                                 className="inline-block h-8 w-8 shrink-0 border border-black/20"
@@ -2034,9 +2267,6 @@ export default function Home() {
                                 {item.color}
                               </span>
                             ) : null}
-                            <span className="shrink-0 rounded-full bg-accent-soft px-2 py-0.5 text-xs font-bold text-accent">
-                              {presentTotal(item.presentSizesQty)}/{itemTargetCount(item)}
-                            </span>
                           </div>
 
                           <div className="mt-2.5">
