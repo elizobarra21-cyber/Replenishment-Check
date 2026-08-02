@@ -49,9 +49,25 @@ model Product {
 model User {
   id           String                 @id @default(cuid())
   username     String                 @unique
-  passwordHash String
+  passwordHash String?
+  email        String?                @unique
+  googleId     String?                @unique
   createdAt    DateTime               @default(now())
   requests     ReplenishmentRequest[]
+}
+
+/// Optional feedback on scan quality, collected for OCR debugging.
+model ScanFeedback {
+  id             String   @id @default(cuid())
+  createdAt      DateTime @default(now())
+  rating         String
+  ocrLine        String?
+  article        String?
+  color          String?
+  season         String?
+  storageSection String?
+  labelPhotoUrl  String?
+  userId         String?
 }
 
 model ReplenishmentRequest {

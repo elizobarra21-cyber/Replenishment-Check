@@ -27,9 +27,15 @@
 - `/api/scan` создает элемент заявки из скана и выбранных размеров.
 - `requestId` сохраняется в `localStorage`; при загрузке заявка и её товары восстанавливаются из БД (`GET /api/requests/[id]`). Список очищается только кнопкой `Finish replenishment` (есть в Hall и Warehouse; помечает заявку `DONE` через `PATCH`, заводит новую).
 - Текущий режим (`hall`/`warehouse`) сохраняется в `localStorage` и восстанавливается при загрузке; для warehouse заново подгружается складской список.
-- Отметки склада: `Taken`/`Absent` пишутся в `RequestItem.pickStatus` (`taken`/`absent`/`null`) через `PATCH /api/items/[id]`; обновление в UI оптимистичное.
+- Отметки склада: `Taken`/`Absent` пишутся в `RequestItem.pickStatus` (`taken`/`absent`/`null`) через `PATCH /api/items/[id]`; обновление в UI оптимистичное. Отмеченный товар остается на своем месте в группе, но сжимается в компактную строку (артикул + цвет + note + статус + `Undo`); после отметки экран скроллится к следующему неотработанному товару.
 - Группировка склада идет по `storageSection` из каждого `RequestItem`, а не по `product.section`.
+- Сортировка склада: пол (`45**` мужское -> `23**` женское -> прочее), затем номер департамента, `article`, `color`. `season` в сортировке не участвует.
+- Hall `Warehouse short list` - плоский список в порядке добавления, новый товар сверху; не группировать и не сортировать.
+- Кнопка `Add to list` - fixed-бар внизу экрана на время ввода. Осторожно с transform на предках: `position: fixed` ломается, поэтому `.mode-enter` использует `animation-fill-mode: backwards`, не `both`.
 - Warehouse mode компактный: 1-2 строки на товар; заголовок группы - `Department {storageSection}`. `need`/`present` размеры - плитками без `xN` (`need` акцентный, `present` контурный); рядом с кодом `color` - образец выбранного цвета.
+- Аутентификация: основной вход - Google OAuth (`/api/auth/google` + `/api/auth/google/callback`, `lib/google-oauth.ts`; env `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`, опционально `APP_URL`). Логин/пароль - fallback (в т.ч. для локальной разработки), не удалять без явной просьбы. `User.passwordHash` nullable; `email`/`googleId` unique.
+- `Rate scan` (после скана, опционально): `POST /api/scan-feedback` сохраняет замороженный OCR-результат (до ручных правок) + фото в `ScanFeedback` - это отладочные данные сканера.
+- Мужские сетки: 5 базовых размеров; `men-shirt` = `38 39 40 41 42` (категория Shirt видна только для Men). Автоопределение: мужской отдел + EUR 38..43 -> `men-shirt`.
 
 ## Текущая архитектура
 

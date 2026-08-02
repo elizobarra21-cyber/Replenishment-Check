@@ -1,6 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import {
   HALL_REQUIRED_SIZES,
   ALL_SIZE_SYSTEMS,
@@ -34,11 +41,12 @@ type SizeQtyMap = Record<string, number>;
 
 const LETTER_SIZES = HALL_REQUIRED_SIZES;
 
-// Labels for the manual size-grid picker.
+// Labels for the manual size-grid picker. Shirts exist only on the men's side.
 const CATEGORY_LABELS: Array<{ value: SizeCategory; label: string }> = [
   { value: "letter", label: "Letter" },
   { value: "small", label: "Jeans" },
   { value: "large", label: "Numeric" },
+  { value: "shirt", label: "Shirt" },
 ];
 
 // Best-effort size system for an already-saved item (older items may lack it).
@@ -161,50 +169,6 @@ function explodeSizeMap(map: SizeQtyMap, orderedSizes: string[] = []) {
   );
 }
 
-function compareLabelField(
-  left: string | null | undefined,
-  right: string | null | undefined,
-) {
-  return (left ?? "").localeCompare(right ?? "", "en", {
-    numeric: true,
-    sensitivity: "base",
-  });
-}
-
-function compareRequestItems(a: RequestItem, b: RequestItem) {
-  const sectionDelta = storageOrder(a.storageSection) - storageOrder(b.storageSection);
-  if (sectionDelta !== 0) {
-    return sectionDelta;
-  }
-
-  const storageDelta = compareLabelField(a.storageSection, b.storageSection);
-  if (storageDelta !== 0) {
-    return storageDelta;
-  }
-
-  const seasonDelta = compareLabelField(a.season, b.season);
-  if (seasonDelta !== 0) {
-    return seasonDelta;
-  }
-
-  const articleDelta = compareLabelField(a.article, b.article);
-  if (articleDelta !== 0) {
-    return articleDelta;
-  }
-
-  return compareLabelField(a.color, b.color);
-}
-
-function storageOrder(storageSection: string | null | undefined) {
-  const order = Number(storageSection);
-  return Number.isInteger(order) && order > 0 ? order : 9999;
-}
-
-function storageGroupId(storageSection: string | null | undefined) {
-  const normalized = storageSection?.trim();
-  return normalized ? `storage-${normalized}` : "storage-unassigned";
-}
-
 function storageGroupName(storageSection: string | null | undefined) {
   const normalized = storageSection?.trim();
   return normalized ? `Department ${normalized}` : "No department";
@@ -223,26 +187,6 @@ function SectionHeadingText({ text }: { text: string }) {
       <span className="text-black">{match[2]}</span>
     </>
   );
-}
-
-function groupItemsBySection(items: RequestItem[]) {
-  return [...items].sort(compareRequestItems).reduce<WarehouseGroup[]>((acc, item) => {
-    const sectionId = storageGroupId(item.storageSection);
-    const existing = acc.find((entry) => entry.sectionId === sectionId);
-    if (existing) {
-      existing.items.push(item);
-      return acc;
-    }
-
-    acc.push({
-      sectionId,
-      sectionName: storageGroupName(item.storageSection),
-      warehouseOrder: storageOrder(item.storageSection),
-      items: [item],
-    });
-
-    return acc;
-  }, []);
 }
 
 function formatLabelPart(value: string | null | undefined) {
@@ -496,7 +440,9 @@ function SizeGridPicker({
         ))}
       </div>
       <div className="flex gap-1.5">
-        {CATEGORY_LABELS.map((c) => (
+        {CATEGORY_LABELS.filter(
+          (c) => gender === "men" || c.value !== "shirt",
+        ).map((c) => (
           <button
             key={c.value}
             type="button"
@@ -576,6 +522,8 @@ export default function Home() {
   const [authPassword, setAuthPassword] = useState("");
   const [authError, setAuthError] = useState("");
   const [authBusy, setAuthBusy] = useState(false);
+  // Password sign-in is a fallback (e.g. local dev without Google credentials).
+  const [showPasswordAuth, setShowPasswordAuth] = useState(false);
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [showSessions, setShowSessions] = useState(false);
   // Expand-in-place: full item list of a past session, fetched on first tap.
@@ -591,6 +539,10 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [scanBusy, setScanBusy] = useState(false);
   const [lastParsed, setLastParsed] = useState<ParsedLabel | null>(null);
+  // Frozen OCR result of the current scan (before manual edits), used by the
+  // optional "Rate scan" debugging feedback.
+  const [scanOcr, setScanOcr] = useState<ParsedLabel | null>(null);
+  const [scanRating, setScanRating] = useState<"good" | "bad" | "sending" | null>(null);
   const [colorValue, setColorValue] = useState("");
   const [scannedForCurrentItem, setScannedForCurrentItem] = useState(false);
   const [currentLabelPhotoUrl, setCurrentLabelPhotoUrl] = useState<string | null>(null);
@@ -604,8 +556,8 @@ export default function Home() {
   const [frontSize, setFrontSize] = useState<number | null>(null);
   // Free-text comment for the current item (shown in both modes).
   const [note, setNote] = useState("");
-  // Warehouse: collapse the handled (taken/absent) items so only needed ones stand out.
-  const [showDone, setShowDone] = useState(false);
+  // Warehouse: DOM refs per item so marking one can scroll the next into view.
+  const itemRefs = useRef<Record<string, HTMLElement | null>>({});
   // Finish confirmation modal + "send report" choice (report emailing is #5).
   const [showFinishModal, setShowFinishModal] = useState(false);
   const [sendReport, setSendReport] = useState(false);
@@ -619,6 +571,7 @@ export default function Home() {
   const [editPresent, setEditPresent] = useState<SizeQtyMap>({});
   const [editSystem, setEditSystem] = useState<SizeSystem>("letter");
   const [editFrontSize, setEditFrontSize] = useState<number | null>(null);
+  const [editNote, setEditNote] = useState("");
   // Delete confirmation modal (replaces window.confirm, which can hang/behave
   // inconsistently inside a Telegram WebView).
   const [deleteTarget, setDeleteTarget] = useState<RequestItem | null>(null);
@@ -639,6 +592,26 @@ export default function Home() {
         setAuthChecked(true);
       }
     })();
+  }, []);
+
+  useEffect(() => {
+    // Surface a failed Google sign-in redirect (?authError=...) and clean the URL.
+    if (typeof window === "undefined") {
+      return;
+    }
+    const params = new URLSearchParams(window.location.search);
+    const reason = params.get("authError");
+    if (!reason) {
+      return;
+    }
+    const messages: Record<string, string> = {
+      "google-not-configured":
+        "Google sign-in is not configured yet (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET).",
+      "google-denied": "Google sign-in was cancelled. Please try again.",
+      "google-failed": "Google sign-in failed. Please try again.",
+    };
+    setAuthError(messages[reason] ?? "Sign-in failed. Please try again.");
+    window.history.replaceState(null, "", window.location.pathname);
   }, []);
 
   useEffect(() => {
@@ -754,29 +727,8 @@ export default function Home() {
   const hallPresentCount = presentTotal(presentSizesQty);
   const hallTargetCount = targetTotal(targetSizes);
 
-  const hallBriefGroups = useMemo(
-    () => groupItemsBySection(draftItems),
-    [draftItems],
-  );
-
-  const warehouseActiveGroups = useMemo(
-    () =>
-      warehouseGroups
-        .map((group) => ({
-          ...group,
-          items: group.items.filter((item) => !item.pickStatus),
-        }))
-        .filter((group) => group.items.length > 0),
-    [warehouseGroups],
-  );
-
-  const warehouseDoneItems = useMemo(
-    () =>
-      warehouseGroups.flatMap((group) =>
-        group.items.filter((item) => item.pickStatus),
-      ),
-    [warehouseGroups],
-  );
+  // Hall short list: plain add order, newest on top (no department grouping).
+  const hallListItems = useMemo(() => [...draftItems].reverse(), [draftItems]);
   const parsedForFields = lastParsed ?? createEmptyParsedLabel();
 
   function updateParsedField(
@@ -892,6 +844,8 @@ export default function Home() {
     setNote("");
     setSizeSystem("letter");
     setLastParsed(null);
+    setScanOcr(null);
+    setScanRating(null);
     setCurrentLabelPhotoUrl(null);
     setScannedForCurrentItem(false);
     setEditingId(null);
@@ -939,14 +893,16 @@ export default function Home() {
 
       const photoUrl = await photoUrlPromise;
       setCurrentLabelPhotoUrl(photoUrl || null);
-      setLastParsed(
-        extracted.parsed
-          ? {
-              ...extracted.parsed,
-              rawLine: composeParsedRawLine(extracted.parsed),
-            }
-          : createEmptyParsedLabel(String(extracted.article)),
-      );
+      const parsedLabel = extracted.parsed
+        ? {
+            ...extracted.parsed,
+            rawLine: composeParsedRawLine(extracted.parsed),
+          }
+        : createEmptyParsedLabel(String(extracted.article));
+      setLastParsed(parsedLabel);
+      // Keep the raw OCR result (before any manual fixes) for "Rate scan".
+      setScanOcr(parsedLabel);
+      setScanRating(null);
       setScannedForCurrentItem(true);
     } catch {
       setCurrentLabelPhotoUrl(null);
@@ -965,8 +921,41 @@ export default function Home() {
     setNote("");
     setCurrentLabelPhotoUrl(null);
     setScannedForCurrentItem(false);
+    setScanOcr(null);
+    setScanRating(null);
     setLastParsed(createEmptyParsedLabel());
     setEntryStarted(true);
+  }
+
+  // Optional OCR-debugging feedback: stores what the scanner read alongside the
+  // photo so misrecognized digits can be investigated later.
+  async function handleRateScan(rating: "good" | "bad") {
+    if (!scanOcr || scanRating === "sending") {
+      return;
+    }
+    setScanRating("sending");
+    try {
+      const res = await fetch("/api/scan-feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          rating,
+          ocrLine: scanOcr.rawLine,
+          article: scanOcr.article,
+          color: scanOcr.color,
+          season: scanOcr.season,
+          storageSection: scanOcr.storageSection,
+          labelPhotoUrl: currentLabelPhotoUrl ?? "",
+        }),
+      });
+      if (!res.ok) {
+        throw new Error("feedback failed");
+      }
+      setScanRating(rating);
+    } catch {
+      setScanRating(null);
+      setError("Could not send scan feedback. Check connection and retry.");
+    }
   }
 
   async function handleAddItem() {
@@ -1008,6 +997,8 @@ export default function Home() {
 
       setDraftItems((prev) => [...prev, json.item as RequestItem]);
       setScannedForCurrentItem(false);
+      setScanOcr(null);
+      setScanRating(null);
       setLastParsed(null);
       setColorValue("");
       setCurrentLabelPhotoUrl(null);
@@ -1105,6 +1096,8 @@ export default function Home() {
       setWarehouseGroups([]);
       setPresentSizesQty({});
       setLastParsed(null);
+      setScanOcr(null);
+      setScanRating(null);
       setColorValue("");
       setCurrentLabelPhotoUrl(null);
       setScannedForCurrentItem(false);
@@ -1112,7 +1105,6 @@ export default function Home() {
       setSizeSystem("letter");
       setFrontSize(null);
       setNote("");
-      setShowDone(false);
       setSendReport(false);
       setMode("hall");
     } catch {
@@ -1125,6 +1117,24 @@ export default function Home() {
   async function handleSetPickStatus(item: RequestItem, status: "taken" | "absent") {
     const next = item.pickStatus === status ? null : status;
     const previous = item.pickStatus ?? null;
+
+    // When an item gets handled, move the eye to the next open item in the
+    // warehouse walk order so the picker never loses their place.
+    if (next) {
+      const orderedItems = warehouseGroups.flatMap((group) => group.items);
+      const index = orderedItems.findIndex((entry) => entry.id === item.id);
+      const following = orderedItems.find(
+        (entry, i) => i > index && !entry.pickStatus && entry.id !== item.id,
+      );
+      if (following) {
+        window.setTimeout(() => {
+          itemRefs.current[following.id]?.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+          });
+        }, 120);
+      }
+    }
 
     const apply = (value: string | null) => {
       setWarehouseGroups((groups) =>
@@ -1171,6 +1181,7 @@ export default function Home() {
     setEditPresent({ ...(item.presentSizesQty ?? {}) });
     setEditSystem(itemSizeSystem(item));
     setEditFrontSize(item.frontSize ?? null);
+    setEditNote(item.warehouseNote ?? "");
   }
 
   async function saveEdit(item: RequestItem) {
@@ -1189,6 +1200,7 @@ export default function Home() {
           presentSizesQty: editPresent,
           sizeSystem: editSystem,
           frontSize: editFrontSize,
+          warehouseNote: editNote,
         }),
       });
       const json = await res.json();
@@ -1274,9 +1286,50 @@ export default function Home() {
               Replenishment
             </span>
           </div>
-          <h1 className="mt-2 text-2xl font-bold">
-            {authMode === "signup" ? "Create account" : "Sign in"}
-          </h1>
+          <h1 className="mt-2 text-2xl font-bold">Sign in</h1>
+
+          <a
+            href="/api/auth/google"
+            className="mt-5 flex w-full items-center justify-center gap-2.5 bg-accent px-4 py-4 text-[13px] font-medium uppercase tracking-[0.04em] text-white active:scale-[0.99]"
+          >
+            <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden>
+              <path
+                fill="currentColor"
+                d="M21.6 12.23c0-.71-.06-1.39-.18-2.05H12v3.88h5.38a4.6 4.6 0 0 1-2 3.02v2.5h3.24c1.9-1.74 2.98-4.32 2.98-7.35Z"
+              />
+              <path
+                fill="currentColor"
+                fillOpacity=".75"
+                d="M12 22c2.7 0 4.96-.9 6.62-2.42l-3.24-2.5c-.9.6-2.04.95-3.38.95-2.6 0-4.8-1.76-5.6-4.12H3.06v2.58A10 10 0 0 0 12 22Z"
+              />
+              <path
+                fill="currentColor"
+                fillOpacity=".55"
+                d="M6.4 13.9a6 6 0 0 1 0-3.8V7.51H3.06a10 10 0 0 0 0 8.97L6.4 13.9Z"
+              />
+              <path
+                fill="currentColor"
+                fillOpacity=".85"
+                d="M12 5.97c1.47 0 2.79.5 3.82 1.5l2.87-2.88A9.97 9.97 0 0 0 12 2a10 10 0 0 0-8.94 5.51L6.4 10.1c.8-2.36 3-4.13 5.6-4.13Z"
+              />
+            </svg>
+            Continue with Google
+          </a>
+
+          {authError && !showPasswordAuth ? (
+            <div className="mt-3 rounded-lg bg-danger-soft px-3 py-2 text-sm">{authError}</div>
+          ) : null}
+
+          <button
+            type="button"
+            onClick={() => setShowPasswordAuth((value) => !value)}
+            className="mt-4 w-full text-center text-xs font-semibold text-black/45 underline underline-offset-2"
+          >
+            {showPasswordAuth ? "Hide password sign-in" : "Use username & password instead"}
+          </button>
+
+          {showPasswordAuth ? (
+            <>
           <form onSubmit={submitAuth} className="mt-5 space-y-3">
             <label className="block text-[13px] font-semibold uppercase tracking-[0.04em] text-black">
               Username
@@ -1325,6 +1378,8 @@ export default function Home() {
               ? "Have an account? Sign in"
               : "New here? Create an account"}
           </button>
+            </>
+          ) : null}
         </div>
       </div>
     );
@@ -1756,6 +1811,38 @@ export default function Home() {
                     </label>
                   </div>
                 </div>
+
+                {scannedForCurrentItem && scanOcr ? (
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed border-black/15 bg-white px-3 py-2">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-black/45">
+                      Rate scan
+                    </span>
+                    {scanRating === "good" || scanRating === "bad" ? (
+                      <span className="text-xs font-semibold text-black/50">
+                        {scanRating === "good" ? "Marked as correct" : "Marked as wrong"}. Thanks!
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          disabled={scanRating === "sending"}
+                          onClick={() => void handleRateScan("good")}
+                          className="rounded-lg border border-black/15 bg-white px-2.5 py-1.5 text-xs font-semibold text-black/60 active:scale-[0.97] disabled:opacity-50"
+                        >
+                          👍 Correct
+                        </button>
+                        <button
+                          type="button"
+                          disabled={scanRating === "sending"}
+                          onClick={() => void handleRateScan("bad")}
+                          className="rounded-lg border border-danger/40 bg-white px-2.5 py-1.5 text-xs font-semibold text-danger active:scale-[0.97] disabled:opacity-50"
+                        >
+                          👎 Wrong digits
+                        </button>
+                      </span>
+                    )}
+                  </div>
+                ) : null}
               </div>
 
               <div className="mt-4 border-t border-black/10 pt-4">
@@ -1884,13 +1971,22 @@ export default function Home() {
                 />
               </div>
 
-              <button
-                onClick={() => void handleAddItem()}
-                disabled={busy || (lastParsed?.article.length ?? 0) < 5}
-                className="mt-5 w-full bg-accent px-4 py-4 text-[13px] font-medium uppercase tracking-[0.04em] text-white disabled:opacity-60"
-              >
-                Add to list
-              </button>
+              {/* Spacer so the fixed Add-to-list bar never covers content. */}
+              <div className="h-24" />
+
+              {/* Always visible at the bottom of the screen while entering an
+                  item, regardless of scroll position or filled fields. */}
+              <div className="fixed inset-x-0 bottom-0 z-40 border-t border-black/10 bg-background/95 px-4 pb-4 pt-3 backdrop-blur">
+                <div className="mx-auto w-full max-w-6xl">
+                  <button
+                    onClick={() => void handleAddItem()}
+                    disabled={busy || (lastParsed?.article.length ?? 0) < 5}
+                    className="w-full bg-accent px-4 py-4 text-[13px] font-medium uppercase tracking-[0.04em] text-white disabled:opacity-60"
+                  >
+                    Add to list
+                  </button>
+                </div>
+              </div>
                 </>
               ) : null}
 
@@ -1909,36 +2005,38 @@ export default function Home() {
             </section>
 
             <section className="px-1">
-              <h2 className="mb-4 text-xl font-semibold">Warehouse short list</h2>
-              {hallBriefGroups.length === 0 ? (
+              <h2 className="mb-4 flex items-center gap-2 text-xl font-semibold">
+                Warehouse short list
+                {hallListItems.length ? (
+                  <span className="rounded-full bg-background px-2 py-0.5 text-xs font-bold text-black/55">
+                    {hallListItems.length}
+                  </span>
+                ) : null}
+              </h2>
+              {hallListItems.length === 0 ? (
                 <p className="text-sm text-black/60">No items added yet.</p>
               ) : (
-                <div className="space-y-5">
-                  {hallBriefGroups.map((group) => (
-                    <div
-                      key={group.sectionId}
-                      className="border border-black/10 bg-white p-3"
-                    >
-                      <h3 className="mb-2 flex items-center gap-2 border-b border-black/10 pb-2.5 text-lg font-extrabold uppercase tracking-[0.02em]">
-                        <SectionHeadingText text={group.sectionName} />
-                        <span className="ml-auto rounded-full bg-background px-2 py-0.5 text-xs font-bold text-black/55">
-                          {group.items.length}
-                        </span>
-                      </h3>
-                      <div className="mt-1 divide-y divide-black/10">
-                        {group.items.map((item) => {
+                // Plain add order, newest on top - no department grouping here.
+                <div className="border border-black/10 bg-white p-3">
+                  <div className="divide-y divide-black/10">
+                    {hallListItems.map((item) => {
                           const editing = editingId === item.id;
                           const editSel = selectableSizesFor(editSystem);
                           const editTokens = explodeSizeMap(editPresent, editSel);
                           return (
                             <div key={item.id} className="py-2.5 text-sm">
                               <div className="flex items-center justify-between gap-3">
-                                <span
-                                  className={`truncate text-base font-bold ${
-                                    item.pickStatus ? "text-black/40 line-through" : "text-black"
-                                  }`}
-                                >
-                                  {item.article}
+                                <span className="flex min-w-0 items-baseline gap-2">
+                                  <span
+                                    className={`truncate text-base font-bold ${
+                                      item.pickStatus ? "text-black/40 line-through" : "text-black"
+                                    }`}
+                                  >
+                                    {item.article}
+                                  </span>
+                                  <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-black/35">
+                                    {storageGroupName(item.storageSection)}
+                                  </span>
                                 </span>
                                 <div className="flex shrink-0 items-center gap-2">
                                   <span className="text-base font-bold text-accent">
@@ -2122,6 +2220,17 @@ export default function Home() {
                                     </div>
                                   </div>
 
+                                  <label className="block text-[11px] font-semibold uppercase tracking-wide text-black/50">
+                                    note
+                                    <input
+                                      value={editNote}
+                                      maxLength={500}
+                                      placeholder="Optional note"
+                                      onChange={(e) => setEditNote(e.target.value)}
+                                      className="mt-1 w-full rounded-lg border border-black/10 bg-white px-3 py-[11px] text-sm outline-none focus:border-accent"
+                                    />
+                                  </label>
+
                                   <div className="flex gap-2 pt-1">
                                     <button
                                       type="button"
@@ -2162,9 +2271,7 @@ export default function Home() {
                             </div>
                           );
                         })}
-                      </div>
-                    </div>
-                  ))}
+                  </div>
                 </div>
               )}
             </section>
@@ -2174,7 +2281,7 @@ export default function Home() {
             <div className="mb-4">
               <h2 className="text-xl font-semibold">Warehouse mode</h2>
               <p className="mt-1 text-sm text-black/60">
-                Grouped by department. Sorted by season, article, color.
+                Men first, then women. Grouped by department, sorted by article, color.
               </p>
               <button
                 type="button"
@@ -2202,13 +2309,9 @@ export default function Home() {
 
             {warehouseGroups.length === 0 ? (
               <p className="text-sm text-black/60">No warehouse items.</p>
-            ) : warehouseActiveGroups.length === 0 ? (
-              <p className="text-sm text-black/60">
-                All items handled. See the list below or finish.
-              </p>
             ) : (
               <div className="space-y-5">
-                {warehouseActiveGroups.map((group) => (
+                {warehouseGroups.map((group) => (
                   <div
                     key={group.sectionId}
                     className="border border-black/10 bg-white p-3"
@@ -2220,16 +2323,67 @@ export default function Home() {
                       </span>
                     </h3>
                     <div className="mt-1.5 divide-y divide-black/5">
-                      {group.items.map((item) => (
-                        <article key={item.id} className="py-2 first:pt-0 last:pb-0">
+                      {group.items.map((item) =>
+                        item.pickStatus ? (
+                          // Handled item: stays in its place but collapses to a
+                          // compact line with only the essentials + Undo.
+                          <article
+                            key={item.id}
+                            className="flex items-center justify-between gap-2 py-1.5"
+                          >
+                            <span className="flex min-w-0 items-center gap-1.5 text-xs">
+                              <span className="font-bold text-black/45 line-through">
+                                {item.article}
+                              </span>
+                              {item.colorName ? (
+                                <ColorSwatch value={item.colorName} size={12} />
+                              ) : null}
+                              {item.color ? (
+                                <span className="text-black/40">{item.color}</span>
+                              ) : null}
+                              {item.warehouseNote ? (
+                                <span className="truncate italic text-black/40">
+                                  {item.warehouseNote}
+                                </span>
+                              ) : null}
+                            </span>
+                            <span className="flex shrink-0 items-center gap-2 text-xs font-semibold">
+                              <span
+                                className={
+                                  item.pickStatus === "taken" ? "text-accent" : "text-danger"
+                                }
+                              >
+                                {item.pickStatus === "taken" ? "Taken" : "Absent"}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void handleSetPickStatus(
+                                    item,
+                                    item.pickStatus === "taken" ? "taken" : "absent",
+                                  )
+                                }
+                                className="text-black/40 underline underline-offset-2"
+                                title="Undo and bring the full card back"
+                              >
+                                Undo
+                              </button>
+                            </span>
+                          </article>
+                        ) : (
+                        <article
+                          key={item.id}
+                          ref={(el) => {
+                            itemRefs.current[item.id] = el;
+                          }}
+                          className="py-2 first:pt-0 last:pb-0"
+                        >
                           <div className="flex items-center justify-between gap-3">
                             <button
                               type="button"
                               onClick={() => openScanPhoto(item)}
                               title={item.labelPhotoUrl ? "Open scan photo" : "No scan photo saved"}
-                              className={`text-left text-base font-bold text-accent underline decoration-accent/25 underline-offset-4 ${
-                                item.pickStatus ? "opacity-50 line-through" : ""
-                              }`}
+                              className="text-left text-base font-bold text-accent underline decoration-accent/25 underline-offset-4"
                             >
                               {item.article}
                             </button>
@@ -2326,68 +2480,15 @@ export default function Home() {
                             >
                               Absent
                             </button>
-                            {item.pickStatus ? (
-                              <span className="shrink-0 text-xs font-semibold text-black/45">
-                                {item.pickStatus === "taken" ? "Picked" : "Not in stock"}
-                              </span>
-                            ) : null}
                           </div>
                         </article>
-                      ))}
+                        ),
+                      )}
                     </div>
                   </div>
                 ))}
               </div>
             )}
-
-            {warehouseDoneItems.length > 0 ? (
-              <div className="mt-4 border border-black/10 bg-white p-3">
-                <button
-                  type="button"
-                  onClick={() => setShowDone((value) => !value)}
-                  className="flex w-full items-center justify-between text-xs font-semibold uppercase tracking-wider text-black/45"
-                >
-                  <span>Picked / not in stock ({warehouseDoneItems.length})</span>
-                  <span>{showDone ? "Hide" : "Show"}</span>
-                </button>
-                {showDone ? (
-                  <div className="mt-2 divide-y divide-black/5">
-                    {warehouseDoneItems.map((item) => (
-                      <div
-                        key={item.id}
-                        className="flex items-center justify-between gap-2 py-1 text-xs"
-                      >
-                        <span className="truncate text-black/40 line-through">
-                          {item.article}
-                        </span>
-                        <span className="flex shrink-0 items-center gap-2">
-                          <span
-                            className={
-                              item.pickStatus === "taken" ? "text-accent" : "text-danger"
-                            }
-                          >
-                            {item.pickStatus === "taken" ? "taken" : "absent"}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              void handleSetPickStatus(
-                                item,
-                                item.pickStatus === "absent" ? "absent" : "taken",
-                              )
-                            }
-                            className="text-black/40 underline underline-offset-2"
-                            title="Move back to the active list"
-                          >
-                            undo
-                          </button>
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
 
             <button
               onClick={() => setShowFinishModal(true)}

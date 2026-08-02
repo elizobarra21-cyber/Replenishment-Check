@@ -54,5 +54,8 @@ body {
   }
 }
 .mode-enter {
-  animation: mode-enter 320ms ease both;
+  /* `backwards` (not `both`): a persistent final transform would turn the
+     ancestor into a containing block and break position:fixed children
+     (the bottom Add-to-list bar). */
+  animation: mode-enter 320ms ease backwards;
 }

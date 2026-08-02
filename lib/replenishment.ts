@@ -79,9 +79,10 @@ export type SizeSystem =
   | "large"
   | "men-letter"
   | "men-small"
-  | "men-large";
+  | "men-large"
+  | "men-shirt";
 
-export type SizeCategory = "letter" | "small" | "large";
+export type SizeCategory = "letter" | "small" | "large" | "shirt";
 export type Gender = "women" | "men";
 
 export const ALL_SIZE_SYSTEMS: SizeSystem[] = [
@@ -91,6 +92,7 @@ export const ALL_SIZE_SYSTEMS: SizeSystem[] = [
   "men-letter",
   "men-small",
   "men-large",
+  "men-shirt",
 ];
 
 type SizeConfig = {
@@ -119,9 +121,10 @@ const SIZE_CONFIGS: Record<SizeSystem, SizeConfig> = {
     optional: ["44"],
     doublePref: ["36", "38", "40", "42", "34", "44"],
   },
+  // Men's grids carry 5 mandatory sizes, extended from the smaller side.
   "men-letter": {
-    mandatory: ["S", "M", "L", "XL"],
-    optional: ["XS"],
+    mandatory: ["XS", "S", "M", "L", "XL"],
+    optional: [],
     doublePref: ["S", "M", "L"],
   },
   "men-small": {
@@ -130,9 +133,15 @@ const SIZE_CONFIGS: Record<SizeSystem, SizeConfig> = {
     doublePref: ["29", "30", "31", "32", "33"],
   },
   "men-large": {
-    mandatory: ["46", "48", "50", "52"],
-    optional: ["44", "54"],
+    mandatory: ["44", "46", "48", "50", "52"],
+    optional: ["54"],
     doublePref: ["48", "50", "46", "52", "44", "54"],
+  },
+  // Men's shirts (collar sizes).
+  "men-shirt": {
+    mandatory: ["38", "39", "40", "41", "42"],
+    optional: [],
+    doublePref: ["39", "40", "41"],
   },
 };
 
@@ -187,6 +196,10 @@ export function sizeSystemFromParts(
   gender: Gender,
   category: SizeCategory,
 ): SizeSystem {
+  // Shirts exist only for men; fall back to letters on the women's side.
+  if (gender === "women" && category === "shirt") {
+    return "letter";
+  }
   return (gender === "men" ? `men-${category}` : category) as SizeSystem;
 }
 
@@ -212,6 +225,7 @@ export function resolveSizeSystem(
   const n = detection.value;
   if (men) {
     if (n >= 28 && n <= 34) return "men-small";
+    if (n >= 38 && n <= 43) return "men-shirt";
     if (n >= 44 && n <= 54) return "men-large";
     return null;
   }

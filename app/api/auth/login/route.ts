@@ -25,8 +25,8 @@ export async function POST(request: Request) {
 
   const username = normalizeUsername(parsed.data.username);
   const user = await prisma.user.findUnique({ where: { username } });
-  // Same response whether the user is missing or the password is wrong.
-  if (!user || !verifyPassword(parsed.data.password, user.passwordHash)) {
+  // Same response whether the user is missing, Google-only, or the password is wrong.
+  if (!user?.passwordHash || !verifyPassword(parsed.data.password, user.passwordHash)) {
     return NextResponse.json({ error: "Wrong username or password." }, { status: 401 });
   }
 

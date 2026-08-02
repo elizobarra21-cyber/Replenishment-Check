@@ -2,6 +2,28 @@
 
 Формат: новая запись сверху. После каждой итерации фиксировать, что изменилось и почему.
 
+## 2026-08-02 - Иконка iPhone-закладки: COS + подпись REPL
+
+- Добавлен `app/apple-icon.tsx` (Next-конвенция apple-icon, `ImageResponse` из `next/og`): статично генерируемый PNG 180x180 для «Add to Home Screen» - белый COS-логотип на фирменном чёрном (#212121), под ним подпись «REPL» с разрядкой.
+- В `app/layout.tsx` добавлено `appleWebApp: { title: "REPL" }` - имя закладки под ярлыком по умолчанию тоже «REPL».
+- Проверено: `/apple-icon` отдаёт PNG, в `<head>` появились `<link rel="apple-touch-icon" sizes="180x180">` и `apple-mobile-web-app-title`.
+
+Почему: сотрудники добавляют miniapp на домашний экран iPhone - ярлык должен выглядеть как COS-инструмент и отличаться подписью REPL.
+
+## 2026-08-01 - Google-вход, оценка скана, порядок списков, компактные отработанные товары, sticky Add, мужские сетки
+
+1. **Google-аутентификация.** Вход теперь через «Continue with Google» (`GET /api/auth/google` → редирект на Google → `GET /api/auth/google/callback` обменивает код, создаёт/линкует пользователя, ставит ту же подписанную сессионную куку). Хелперы — `lib/google-oauth.ts` (state-кука против CSRF, обмен кода, декод id_token). Нужны env `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` (+ опционально `APP_URL`); redirect URI в Google Console: `https://<домен>/api/auth/google/callback`. Prisma `User`: `passwordHash` стал nullable, добавлены `email` и `googleId` (unique). Логин/пароль оставлен как fallback (скрыт за ссылкой «Use username & password instead» — нужен для локальной разработки без ключей); при отсутствии ключей Google-кнопка редиректит с понятной ошибкой `?authError=google-not-configured`.
+2. **«Rate scan» (отладка OCR).** После скана под полями кода появляется опциональный блок «Rate scan» (👍 Correct / 👎 Wrong digits). Отправляет в `POST /api/scan-feedback` замороженный результат OCR (до ручных правок: raw line + поля) и фото этикетки; хранится в новой таблице `ScanFeedback` c `userId`. При ручном вводе блок не показывается.
+3. **Hall short list — порядок добавления.** Группировка по департаментам и сортировка по артикулу убраны: плоский список, только что добавленный товар сверху. Департамент показан маленькой подписью рядом с артикулом. Хелперы `compareRequestItems`/`groupItemsBySection` из `page.tsx` удалены.
+4. **Отработанные товары на складе остаются на месте.** Товар с `pickStatus` больше не переносится в свёрнутый блок «Picked / not in stock» (блок удалён) — он остаётся на своей позиции в департаменте, но сжимается в одну строку: артикул (зачёркнут), образец цвета + код, option note, статус Taken/Absent и ссылка Undo (вместо нижних кнопок). При отметке экран плавно скроллится к следующему неотработанному товару (refs по id + `scrollIntoView`).
+5. **Sticky «Add to list».** Кнопка закреплена внизу экрана (fixed bar) на всё время ввода товара, видна при любом скролле и заполненности полей. Попутно исправлен `globals.css`: `.mode-enter` имел `animation-fill-mode: both`, финальный `transform` превращал предка в containing block и ломал `position: fixed` — заменено на `backwards`.
+6. **Сортировка склада: мужское первым.** Порядок: пол (45\*\* мужское → 23\*\* женское → прочее), затем номер департамента, артикул, цвет. `season` из сортировки убран (`app/api/requests/[id]/warehouse/route.ts`).
+7. **Мужская сетка рубашек.** Новая система размеров `men-shirt`: 38 39 40 41 42 (категория «Shirt» в пикере, видна только для Men). Автоопределение: мужской отдел + EUR 38–43 → `men-shirt`.
+8. **Мужские сетки — 5 базовых размеров.** `men-letter`: XS теперь обязательный (XS S M L XL); `men-large`: 44 переведён из optional в mandatory (44 46 48 50 52, optional 54). `men-small` уже имел 5.
+9. **Option note редактируем.** В инлайн-редакторе товара добавлено поле note (`warehouseNote`), сохраняется через существующий `PATCH /api/items/[id]`.
+
+Схема применена к Supabase через `prisma db push` (аддитивно: nullable-колонки + таблица ScanFeedback). Проверено в браузере: вход (fallback), ручной ввод, сетка рубашек, sticky-кнопка, порядок hall-списка, men-first сортировка склада, сжатие отработанного товара + Undo + автоскролл, редактирование note, POST /api/scan-feedback. Тестовые данные удалены из БД.
+
 ## 2026-07-14 - Пакет: убран Live Scan, иерархия карточки, фронт в редактировании, удаление, просмотр сессий (TASKS 2026-07-14)
 
 1. **Live Scan убран.** Фича полностью удалена (`app/components/LiveScanner.tsx`, `showLive`/`handleLiveCapture`, `recognizeStripCanvas` в `lib/ocr.ts`). «Scan photo» стала главной кнопкой на всю ширину, чёрной (`bg-accent`, тема COS = #212121), капс 13px, как остальные CTA. Gallery / Type manually — вторичные ссылки под ней.

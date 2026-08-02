@@ -23,7 +23,7 @@ const updateItemSchema = z.object({
   storageSection: z.string().trim().max(32).optional(),
   warehouseNote: z.string().trim().max(500).optional(),
   sizeSystem: z
-    .enum(["letter", "small", "large", "men-letter", "men-small", "men-large"])
+    .enum(["letter", "small", "large", "men-letter", "men-small", "men-large", "men-shirt"])
     .optional(),
   frontSize: z.number().int().nullable().optional(),
   presentSizesQty: z

@@ -19,6 +19,14 @@ function storageOrder(storageSection: string | null | undefined) {
   return Number.isInteger(order) && order > 0 ? order : 9999;
 }
 
+// Men's departments (45xx) come first, then women's (23xx), then the rest.
+function genderRank(storageSection: string | null | undefined) {
+  const normalized = storageSection?.trim() ?? "";
+  if (/^45/.test(normalized)) return 0;
+  if (/^23/.test(normalized)) return 1;
+  return 2;
+}
+
 function storageGroupId(storageSection: string | null | undefined) {
   const normalized = storageSection?.trim();
   return normalized ? `storage-${normalized}` : "storage-unassigned";
@@ -56,6 +64,11 @@ export async function GET(
   }
 
   const sortedItems = [...requestData.items].sort((a, b) => {
+    const genderDelta = genderRank(a.storageSection) - genderRank(b.storageSection);
+    if (genderDelta !== 0) {
+      return genderDelta;
+    }
+
     const sectionDelta = storageOrder(a.storageSection) - storageOrder(b.storageSection);
     if (sectionDelta !== 0) {
       return sectionDelta;
@@ -64,11 +77,6 @@ export async function GET(
     const storageDelta = compareLabelField(a.storageSection, b.storageSection);
     if (storageDelta !== 0) {
       return storageDelta;
-    }
-
-    const seasonDelta = compareLabelField(a.season, b.season);
-    if (seasonDelta !== 0) {
-      return seasonDelta;
     }
 
     const articleDelta = compareLabelField(a.article, b.article);
@@ -107,6 +115,6 @@ export async function GET(
   return NextResponse.json({
     request: requestData,
     grouped,
-    sortOrder: ["storageSection", "season", "article", "color"],
+    sortOrder: ["gender(men-first)", "storageSection", "article", "color"],
   });
 }
