@@ -1971,21 +1971,17 @@ export default function Home() {
                 />
               </div>
 
-              {/* Spacer so the fixed Add-to-list bar never covers content. */}
-              <div className="h-24" />
-
-              {/* Always visible at the bottom of the screen while entering an
-                  item, regardless of scroll position or filled fields. */}
-              <div className="fixed inset-x-0 bottom-0 z-40 border-t border-black/10 bg-background/95 px-4 pb-4 pt-3 backdrop-blur">
-                <div className="mx-auto w-full max-w-6xl">
-                  <button
-                    onClick={() => void handleAddItem()}
-                    disabled={busy || (lastParsed?.article.length ?? 0) < 5}
-                    className="w-full bg-accent px-4 py-4 text-[13px] font-medium uppercase tracking-[0.04em] text-white disabled:opacity-60"
-                  >
-                    Add to list
-                  </button>
-                </div>
+              {/* Sticks to the bottom of the screen while the entry form is
+                  taller than the viewport; docks into this natural spot once
+                  the end of the form scrolls into view. */}
+              <div className="sticky bottom-0 z-30 mt-5 border-t border-black/10 bg-background/95 pb-3 pt-3 backdrop-blur">
+                <button
+                  onClick={() => void handleAddItem()}
+                  disabled={busy || (lastParsed?.article.length ?? 0) < 5}
+                  className="w-full bg-accent px-4 py-4 text-[13px] font-medium uppercase tracking-[0.04em] text-white disabled:opacity-60"
+                >
+                  Add to list
+                </button>
               </div>
                 </>
               ) : null}

@@ -31,7 +31,7 @@
 - Группировка склада идет по `storageSection` из каждого `RequestItem`, а не по `product.section`.
 - Сортировка склада: пол (`45**` мужское -> `23**` женское -> прочее), затем номер департамента, `article`, `color`. `season` в сортировке не участвует.
 - Hall `Warehouse short list` - плоский список в порядке добавления, новый товар сверху; не группировать и не сортировать.
-- Кнопка `Add to list` - fixed-бар внизу экрана на время ввода. Осторожно с transform на предках: `position: fixed` ломается, поэтому `.mode-enter` использует `animation-fill-mode: backwards`, не `both`.
+- Кнопка `Add to list` - `position: sticky; bottom: 0` в конце формы ввода: липнет к низу экрана, пока конец формы не виден, и встает на свое естественное место при долистывании. Осторожно с transform/overflow на предках (ломают sticky/fixed): `.mode-enter` использует `animation-fill-mode: backwards`, не `both`.
 - Warehouse mode компактный: 1-2 строки на товар; заголовок группы - `Department {storageSection}`. `need`/`present` размеры - плитками без `xN` (`need` акцентный, `present` контурный); рядом с кодом `color` - образец выбранного цвета.
 - Аутентификация: основной вход - Google OAuth (`/api/auth/google` + `/api/auth/google/callback`, `lib/google-oauth.ts`; env `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`, опционально `APP_URL`). Логин/пароль - fallback (в т.ч. для локальной разработки), не удалять без явной просьбы. `User.passwordHash` nullable; `email`/`googleId` unique.
 - `Rate scan` (после скана, опционально): `POST /api/scan-feedback` сохраняет замороженный OCR-результат (до ручных правок) + фото в `ScanFeedback` - это отладочные данные сканера.
