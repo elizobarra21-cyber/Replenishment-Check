@@ -1,95 +1,91 @@
-// Minimal dependency-free PDF writer: renders a list of text lines to a simple
-// multi-page A4 document using the standard Helvetica fonts (no embedding). Good
-// enough for a text report; avoids pulling in a heavy PDF library.
+// PDF writer for the replenishment report. Uses pdf-lib with an embedded
+// DejaVu Sans subset (lib/fonts/dejavu.ts) so Cyrillic notes render correctly -
+// the standard Helvetica base fonts have no Cyrillic glyphs.
 
-export type PdfLine = { text: string; size?: number; bold?: boolean };
+import fontkit from "@pdf-lib/fontkit";
+import { PDFDocument, PDFFont } from "pdf-lib";
+import { DEJAVU_SANS_BASE64, DEJAVU_SANS_BOLD_BASE64 } from "@/lib/fonts/dejavu";
 
-const PAGE_WIDTH = 595;
-const PAGE_HEIGHT = 842;
+export type PdfLine = {
+  text: string;
+  size?: number;
+  bold?: boolean;
+  // Extra left offset in points (for item lines under a department heading).
+  indent?: number;
+};
+
+const PAGE_WIDTH = 595.28; // A4
+const PAGE_HEIGHT = 841.89;
 const MARGIN_X = 50;
-const TOP = 800;
+const TOP = PAGE_HEIGHT - 50;
 const BOTTOM = 50;
-const LINE_HEIGHT = 16;
 
-function escapePdfText(text: string): string {
-  // Escape PDF string delimiters and drop non-WinAnsi bytes.
-  return text
-    .replace(/\\/g, "\\\\")
-    .replace(/\(/g, "\\(")
-    .replace(/\)/g, "\\)")
-    .replace(/[^\x20-\x7E]/g, "?");
+// Drop characters outside the embedded subset (Latin, Cyrillic, common
+// punctuation) so pdf-lib does not throw on e.g. emoji in a note.
+const OUTSIDE_SUBSET =
+  /[^\x20-\x7E\u00A0-\u017F\u0400-\u04FF\u2010-\u2027\u2030-\u205E\u20AC\u2116]/g;
+
+function sanitizePdfText(text: string): string {
+  return text.replace(OUTSIDE_SUBSET, "?");
 }
 
-export function buildTextPdf(lines: PdfLine[]): Uint8Array {
-  // Paginate.
-  const pages: PdfLine[][] = [];
-  let current: PdfLine[] = [];
+function wrapLine(
+  text: string,
+  font: PDFFont,
+  size: number,
+  maxWidth: number,
+): string[] {
+  if (!text) {
+    return [""];
+  }
+  const words = text.split(/\s+/);
+  const rows: string[] = [];
+  let current = "";
+  for (const word of words) {
+    const candidate = current ? `${current} ${word}` : word;
+    if (!current || font.widthOfTextAtSize(candidate, size) <= maxWidth) {
+      current = candidate;
+    } else {
+      rows.push(current);
+      current = word;
+    }
+  }
+  rows.push(current);
+  return rows;
+}
+
+export async function buildTextPdf(lines: PdfLine[]): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  doc.registerFontkit(fontkit);
+  const regular = await doc.embedFont(DEJAVU_SANS_BASE64, { subset: true });
+  const bold = await doc.embedFont(DEJAVU_SANS_BOLD_BASE64, { subset: true });
+
+  let page = doc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
   let y = TOP;
+
   for (const line of lines) {
-    if (y < BOTTOM) {
-      pages.push(current);
-      current = [];
-      y = TOP;
+    const size = line.size ?? 11;
+    const font = line.bold ? bold : regular;
+    const indent = line.indent ?? 0;
+    const lineHeight = size * 1.45;
+    const rows = wrapLine(
+      sanitizePdfText(line.text),
+      font,
+      size,
+      PAGE_WIDTH - MARGIN_X * 2 - indent,
+    );
+
+    for (const row of rows) {
+      if (y - lineHeight < BOTTOM) {
+        page = doc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+        y = TOP;
+      }
+      y -= lineHeight;
+      if (row) {
+        page.drawText(row, { x: MARGIN_X + indent, y, size, font });
+      }
     }
-    current.push(line);
-    y -= LINE_HEIGHT;
   }
-  pages.push(current);
 
-  // Object numbers: 1 catalog, 2 pages, 3 Helvetica, 4 Helvetica-Bold,
-  // then a (page, content) pair per page.
-  const pageObjNums: number[] = [];
-  const contentObjNums: number[] = [];
-  let nextObj = 5;
-  for (let i = 0; i < pages.length; i += 1) {
-    pageObjNums.push(nextObj++);
-    contentObjNums.push(nextObj++);
-  }
-  const totalObjs = nextObj - 1;
-
-  const objects: string[] = new Array(totalObjs + 1).fill("");
-  objects[1] = "<</Type/Catalog/Pages 2 0 R>>";
-  objects[2] = `<</Type/Pages/Kids[${pageObjNums
-    .map((n) => `${n} 0 R`)
-    .join(" ")}]/Count ${pages.length}>>`;
-  objects[3] = "<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>";
-  objects[4] = "<</Type/Font/Subtype/Type1/BaseFont/Helvetica-Bold>>";
-
-  pages.forEach((pageLines, index) => {
-    let yy = TOP;
-    let stream = "BT\n";
-    for (const line of pageLines) {
-      const size = line.size ?? 11;
-      const font = line.bold ? "F2" : "F1";
-      stream += `/${font} ${size} Tf 1 0 0 1 ${MARGIN_X} ${yy} Tm (${escapePdfText(
-        line.text,
-      )}) Tj\n`;
-      yy -= LINE_HEIGHT;
-    }
-    stream += "ET";
-
-    const pageNum = pageObjNums[index];
-    const contentNum = contentObjNums[index];
-    objects[pageNum] =
-      `<</Type/Page/Parent 2 0 R/MediaBox[0 0 ${PAGE_WIDTH} ${PAGE_HEIGHT}]` +
-      `/Resources<</Font<</F1 3 0 R/F2 4 0 R>>>>/Contents ${contentNum} 0 R>>`;
-    objects[contentNum] =
-      `<</Length ${Buffer.byteLength(stream, "latin1")}>>\nstream\n${stream}\nendstream`;
-  });
-
-  // Assemble with a cross-reference table.
-  let pdf = "%PDF-1.4\n";
-  const offsets: number[] = new Array(totalObjs + 1).fill(0);
-  for (let n = 1; n <= totalObjs; n += 1) {
-    offsets[n] = Buffer.byteLength(pdf, "latin1");
-    pdf += `${n} 0 obj\n${objects[n]}\nendobj\n`;
-  }
-  const xrefStart = Buffer.byteLength(pdf, "latin1");
-  pdf += `xref\n0 ${totalObjs + 1}\n0000000000 65535 f \n`;
-  for (let n = 1; n <= totalObjs; n += 1) {
-    pdf += `${String(offsets[n]).padStart(10, "0")} 00000 n \n`;
-  }
-  pdf += `trailer\n<</Size ${totalObjs + 1}/Root 1 0 R>>\nstartxref\n${xrefStart}\n%%EOF`;
-
-  return new Uint8Array(Buffer.from(pdf, "latin1"));
+  return doc.save();
 }

@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
 import { mailerConfigured, sendReportEmail } from "@/lib/mailer";
-import { buildTextPdf, type PdfLine } from "@/lib/pdf";
-import { formatSizeQty, type SizeQtyMap } from "@/lib/replenishment";
+import { buildRequestReportPdf, reportFilename } from "@/lib/report";
 import { prisma } from "@/lib/prisma";
 
 // Run this function in Frankfurt (fra1) - closest to the Supabase DB and to Israel.
@@ -10,14 +9,39 @@ export const preferredRegion = "fra1";
 
 const REPORT_TO = process.env.REPORT_TO || "star00@list.ru";
 
-function asMap(value: unknown): SizeQtyMap {
-  return (value ?? {}) as SizeQtyMap;
+async function loadRequestWithItems(id: string) {
+  return prisma.replenishmentRequest.findUnique({
+    where: { id },
+    include: { items: true },
+  });
 }
 
-function compareField(a: string | null, b: string | null) {
-  return (a ?? "").localeCompare(b ?? "", "en", { numeric: true, sensitivity: "base" });
+// Download the session report as a PDF file (saved to the phone by the browser).
+export async function GET(
+  request: Request,
+  context: { params: Promise<{ id: string }> },
+) {
+  if (!getSessionUser(request)) {
+    return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+  }
+
+  const { id } = await context.params;
+  const data = await loadRequestWithItems(id);
+  if (!data) {
+    return NextResponse.json({ error: "Request not found" }, { status: 404 });
+  }
+
+  const pdf = await buildRequestReportPdf(data);
+  return new Response(new Uint8Array(pdf), {
+    headers: {
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `attachment; filename="${reportFilename(data)}"`,
+      "Cache-Control": "no-store",
+    },
+  });
 }
 
+// Email the same PDF to the report inbox.
 export async function POST(
   request: Request,
   context: { params: Promise<{ id: string }> },
@@ -27,64 +51,12 @@ export async function POST(
   }
 
   const { id } = await context.params;
-  const data = await prisma.replenishmentRequest.findUnique({
-    where: { id },
-    include: { items: true },
-  });
+  const data = await loadRequestWithItems(id);
   if (!data) {
     return NextResponse.json({ error: "Request not found" }, { status: 404 });
   }
 
-  const items = [...data.items].sort(
-    (a, b) =>
-      compareField(a.storageSection, b.storageSection) ||
-      compareField(a.season, b.season) ||
-      compareField(a.article, b.article) ||
-      compareField(a.color, b.color),
-  );
-
-  const taken = items.filter((i) => i.pickStatus === "taken").length;
-  const absent = items.filter((i) => i.pickStatus === "absent").length;
-  const pending = items.length - taken - absent;
-
-  const lines: PdfLine[] = [
-    { text: "Replenishment report", size: 18, bold: true },
-    { text: `Date: ${data.createdAt.toISOString().slice(0, 16).replace("T", " ")} UTC` },
-    { text: `User: ${data.createdBy}` },
-    { text: `Session: ${data.id}` },
-    { text: `Status: ${data.status}` },
-    { text: "" },
-    {
-      text: `Items: ${items.length}   Taken: ${taken}   Absent: ${absent}   Pending: ${pending}`,
-      bold: true,
-    },
-    { text: "" },
-  ];
-
-  let currentDept: string | null | undefined;
-  for (const item of items) {
-    if (item.storageSection !== currentDept) {
-      currentDept = item.storageSection;
-      const deptItems = items.filter((i) => i.storageSection === currentDept);
-      lines.push({
-        text: `Department ${item.storageSection?.trim() || "-"} (${deptItems.length})`,
-        size: 13,
-        bold: true,
-      });
-    }
-    const status = item.pickStatus ? ` [${item.pickStatus}]` : "";
-    const color = item.color ? ` color ${item.color}` : "";
-    const season = item.season ? ` season ${item.season}` : "";
-    const note = item.warehouseNote ? `  note: ${item.warehouseNote}` : "";
-    lines.push({
-      text: `  ${item.article}${color}${season}  present: ${formatSizeQty(
-        asMap(item.presentSizesQty),
-      )}  need: ${formatSizeQty(asMap(item.neededSizesQty))}${status}${note}`,
-    });
-  }
-
-  const pdf = buildTextPdf(lines);
-  const filename = `replenishment-${data.id.slice(0, 8)}.pdf`;
+  const pdf = await buildRequestReportPdf(data);
 
   if (!mailerConfigured()) {
     // PDF is ready but no email provider is chosen yet (product decision).
@@ -100,8 +72,8 @@ export async function POST(
     await sendReportEmail({
       to: REPORT_TO,
       subject: `Replenishment report ${data.id.slice(0, 8)}`,
-      text: `Replenishment report for session ${data.id} (${items.length} items).`,
-      filename,
+      text: `Replenishment report for session ${data.id} (${data.items.length} items).`,
+      filename: reportFilename(data),
       pdf,
     });
     return NextResponse.json({ sent: true, to: REPORT_TO });

@@ -406,14 +406,18 @@ function SizeTiles({
 }
 
 // Manual size-grid override: gender (Women/Men) + category (Letter/Jeans/Numeric).
+// With chosen=false nothing is highlighted: the grid is a required field and
+// the working default must not look like a made choice.
 function SizeGridPicker({
   system,
   onChange,
   compact = false,
+  chosen = true,
 }: {
   system: SizeSystem;
   onChange: (next: SizeSystem) => void;
   compact?: boolean;
+  chosen?: boolean;
 }) {
   const gender = genderOf(system);
   const category = categoryOf(system);
@@ -433,7 +437,7 @@ function SizeGridPicker({
             key={g}
             type="button"
             onClick={() => onChange(sizeSystemFromParts(g, category))}
-            className={btn(gender === g)}
+            className={btn(chosen && gender === g)}
           >
             {g === "women" ? "Women" : "Men"}
           </button>
@@ -447,7 +451,7 @@ function SizeGridPicker({
             key={c.value}
             type="button"
             onClick={() => onChange(sizeSystemFromParts(gender, c.value))}
-            className={btn(category === c.value)}
+            className={btn(chosen && category === c.value)}
           >
             {c.label}
           </button>
@@ -552,6 +556,14 @@ export default function Home() {
   const [entryStarted, setEntryStarted] = useState(false);
   // Size system detected from the label's EUR line.
   const [sizeSystem, setSizeSystem] = useState<SizeSystem>("letter");
+  // Size grid is a required field: true once auto-detected from the label or
+  // picked by hand. "letter" stays as the working default for the size tiles,
+  // but the item cannot be added until the grid is confirmed.
+  const [sizeGridChosen, setSizeGridChosen] = useState(false);
+  // Per-session PDF report emailing state (session history panel).
+  const [reportStatus, setReportStatus] = useState<
+    Record<string, "sending" | "sent" | "error" | "not-configured">
+  >({});
   // Front capacity: null = not on a front, otherwise 6 or 8 garments.
   const [frontSize, setFrontSize] = useState<number | null>(null);
   // Free-text comment for the current item (shown in both modes).
@@ -727,6 +739,14 @@ export default function Home() {
   const hallPresentCount = presentTotal(presentSizesQty);
   const hallTargetCount = targetTotal(targetSizes);
 
+  // Required fields for "Add to list": article, an explicit size grid and at
+  // least one size marked as present in the hall.
+  const requiredHints = [
+    (lastParsed?.article.length ?? 0) < 5 ? "article" : "",
+    !sizeGridChosen ? "size grid" : "",
+    hallPresentCount === 0 ? "sizes in hall" : "",
+  ].filter(Boolean);
+
   // Hall short list: plain add order, newest on top (no department grouping).
   const hallListItems = useMemo(() => [...draftItems].reverse(), [draftItems]);
   const parsedForFields = lastParsed ?? createEmptyParsedLabel();
@@ -843,6 +863,7 @@ export default function Home() {
     setFrontSize(null);
     setNote("");
     setSizeSystem("letter");
+    setSizeGridChosen(false);
     setLastParsed(null);
     setScanOcr(null);
     setScanRating(null);
@@ -886,7 +907,10 @@ export default function Home() {
       // printed on the label.
       const hints = await hintsPromise;
       const dept = extracted.parsed?.storageSection ?? "";
-      setSizeSystem(resolveSizeSystem(hints?.size ?? null, dept) ?? "letter");
+      const resolvedSystem = resolveSizeSystem(hints?.size ?? null, dept);
+      setSizeSystem(resolvedSystem ?? "letter");
+      // Auto-detection satisfies the required size-grid field.
+      setSizeGridChosen(Boolean(resolvedSystem));
       if (hints?.color) {
         setColorValue(hints.color);
       }
@@ -917,6 +941,7 @@ export default function Home() {
     setError("");
     setPhotoNotice("");
     setSizeSystem("letter");
+    setSizeGridChosen(false);
     setFrontSize(null);
     setNote("");
     setCurrentLabelPhotoUrl(null);
@@ -1005,6 +1030,7 @@ export default function Home() {
       setPresentSizesQty({});
       setEntryStarted(false);
       setSizeSystem("letter");
+      setSizeGridChosen(false);
       setFrontSize(null);
       setNote("");
 
@@ -1103,6 +1129,7 @@ export default function Home() {
       setScannedForCurrentItem(false);
       setEntryStarted(false);
       setSizeSystem("letter");
+      setSizeGridChosen(false);
       setFrontSize(null);
       setNote("");
       setSendReport(false);
@@ -1252,6 +1279,24 @@ export default function Home() {
     }
     setDeleteBusy(false);
     setDeleteTarget(null);
+  }
+
+  // Email the session PDF report to the report inbox (star00@list.ru).
+  async function handleEmailReport(id: string) {
+    setReportStatus((prev) => ({ ...prev, [id]: "sending" }));
+    try {
+      const res = await fetch(`/api/requests/${id}/report`, { method: "POST" });
+      const json = await res.json().catch(() => ({}));
+      if (res.ok && json.sent) {
+        setReportStatus((prev) => ({ ...prev, [id]: "sent" }));
+      } else if (json.reason === "email-not-configured") {
+        setReportStatus((prev) => ({ ...prev, [id]: "not-configured" }));
+      } else {
+        setReportStatus((prev) => ({ ...prev, [id]: "error" }));
+      }
+    } catch {
+      setReportStatus((prev) => ({ ...prev, [id]: "error" }));
+    }
   }
 
   function openScanPhoto(item: RequestItem) {
@@ -1585,24 +1630,85 @@ export default function Home() {
                         ) : !items || items.length === 0 ? (
                           <p className="text-black/40">No items.</p>
                         ) : (
-                          <ul className="space-y-1">
-                            {items.map((item) => (
-                              <li
-                                key={item.id}
-                                className="flex items-center justify-between gap-2"
+                          <>
+                            {/* Per item: department - article - color - present
+                                sizes - needed sizes - hall X/Y - note. */}
+                            <ul className="space-y-2">
+                              {items.map((item) => (
+                                <li key={item.id}>
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="flex min-w-0 items-center gap-1.5">
+                                      <span className="shrink-0 font-semibold uppercase tracking-wide text-black/40">
+                                        {item.storageSection?.trim() || "-"}
+                                      </span>
+                                      <span className="truncate font-bold text-black/75">
+                                        {item.article}
+                                      </span>
+                                      {item.colorName ? (
+                                        <ColorSwatch value={item.colorName} size={12} />
+                                      ) : null}
+                                      {item.color ? (
+                                        <span className="shrink-0 text-black/45">
+                                          {item.color}
+                                        </span>
+                                      ) : null}
+                                    </span>
+                                    <span className="shrink-0 font-semibold text-black/50">
+                                      {presentTotal(item.presentSizesQty)}/{itemTargetCount(item)}
+                                    </span>
+                                  </div>
+                                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+                                    <span className="inline-flex items-center gap-1.5 text-black/45">
+                                      present
+                                      <SizeTiles map={item.presentSizesQty} variant="present" />
+                                    </span>
+                                    <span className="inline-flex items-center gap-1.5 text-black/45">
+                                      need
+                                      <SizeTiles map={item.neededSizesQty} variant="need" />
+                                    </span>
+                                  </div>
+                                  {item.warehouseNote ? (
+                                    <p className="mt-0.5 italic text-black/50">
+                                      {item.warehouseNote}
+                                    </p>
+                                  ) : null}
+                                </li>
+                              ))}
+                            </ul>
+
+                            <div className="mt-2.5 flex flex-wrap items-center gap-2 border-t border-black/5 pt-2">
+                              <a
+                                href={`/api/requests/${s.id}/report`}
+                                download
+                                className="rounded-lg border border-black/15 bg-white px-2.5 py-1.5 font-semibold text-black/60 active:scale-[0.97]"
                               >
-                                <span className="truncate text-black/70">
-                                  {item.article}
-                                  <span className="ml-1.5 text-black/35">
-                                    {storageGroupName(item.storageSection)}
-                                  </span>
+                                Download PDF
+                              </a>
+                              <button
+                                type="button"
+                                disabled={reportStatus[s.id] === "sending"}
+                                onClick={() => void handleEmailReport(s.id)}
+                                className="rounded-lg border border-black/15 bg-white px-2.5 py-1.5 font-semibold text-black/60 active:scale-[0.97] disabled:opacity-50"
+                              >
+                                {reportStatus[s.id] === "sending"
+                                  ? "Sending..."
+                                  : "Email to star00@list.ru"}
+                              </button>
+                              {reportStatus[s.id] === "sent" ? (
+                                <span className="font-semibold text-accent">
+                                  Sent to star00@list.ru
                                 </span>
-                                <span className="shrink-0 font-semibold text-black/50">
-                                  {presentTotal(item.presentSizesQty)}/{itemTargetCount(item)}
+                              ) : reportStatus[s.id] === "not-configured" ? (
+                                <span className="text-black/45">
+                                  Email service is not set up yet - use Download PDF.
                                 </span>
-                              </li>
-                            ))}
-                          </ul>
+                              ) : reportStatus[s.id] === "error" ? (
+                                <span className="font-semibold text-danger">
+                                  Could not send. Try again.
+                                </span>
+                              ) : null}
+                            </div>
+                          </>
                         )}
                       </div>
                     ) : null}
@@ -1876,22 +1982,24 @@ export default function Home() {
 
               <div className="mt-4 border-t border-black/10 pt-4">
                 <p className="text-[13px] font-semibold uppercase tracking-[0.04em] text-black">
-                  Size grid
+                  Size grid <span className="text-danger">*</span>
                 </p>
                 <div className="mt-2">
-                  <SizeGridPicker system={sizeSystem} onChange={setSizeSystem} />
+                  <SizeGridPicker
+                    system={sizeSystem}
+                    chosen={sizeGridChosen}
+                    onChange={(next) => {
+                      setSizeSystem(next);
+                      setSizeGridChosen(true);
+                    }}
+                  />
                 </div>
               </div>
 
               <div className="mt-4 border-t border-black/10 pt-4">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-[13px] font-semibold uppercase tracking-[0.04em] text-black">
-                    Choose existing sizes
-                  </p>
-                  <span className="rounded-full bg-accent-soft px-2.5 py-1 text-sm font-bold text-accent">
-                    in hall {hallPresentCount} / {hallTargetCount}
-                  </span>
-                </div>
+                <p className="text-[13px] font-semibold uppercase tracking-[0.04em] text-black">
+                  Choose existing sizes <span className="text-danger">*</span>
+                </p>
                 <div
                   className={`mt-2 grid gap-2 ${
                     selectableSizes.length > 5 ? "grid-cols-4" : "grid-cols-5"
@@ -1914,48 +2022,6 @@ export default function Home() {
                   ))}
                 </div>
 
-                <div className="mt-3 flex min-h-8 flex-wrap gap-1.5">
-                  {presentSizeTokens.length ? (
-                    presentSizeTokens.map((token, index) => (
-                      <button
-                        key={`${token}-${index}`}
-                        type="button"
-                        onClick={() => {
-                          setPresentSizesQty((prev) => ({
-                            ...prev,
-                            [token]: Math.max(0, (prev[token] ?? 0) - 1),
-                          }));
-                        }}
-                        className="rounded-md border border-black/10 bg-white px-2.5 py-1.5 text-sm font-semibold active:scale-[0.97]"
-                        title="Remove one"
-                      >
-                        {token}
-                      </button>
-                    ))
-                  ) : (
-                    <span className="text-sm text-black/55">-</span>
-                  )}
-                </div>
-              </div>
-
-              <div className="mt-4 border-t border-black/10 pt-4">
-                <p className="text-[13px] font-semibold uppercase tracking-[0.04em] text-black">
-                  Suggested sizes
-                </p>
-                <div className="mt-2 flex min-h-8 flex-wrap gap-1.5">
-                  {neededSizeTokens.length ? (
-                    neededSizeTokens.map((token, index) => (
-                      <span
-                        key={`need-${token}-${index}`}
-                        className="rounded-md bg-accent-soft px-2.5 py-1.5 text-sm font-semibold text-accent"
-                      >
-                        {token}
-                      </span>
-                    ))
-                  ) : (
-                    <span className="text-sm text-black/60">-</span>
-                  )}
-                </div>
               </div>
 
               <div className="mt-4 border-t border-black/10 pt-4">
@@ -1973,12 +2039,71 @@ export default function Home() {
 
               {/* Sticks to the bottom of the screen while the entry form is
                   taller than the viewport; docks into this natural spot once
-                  the end of the form scrolls into view. */}
-              <div className="sticky bottom-0 z-30 mt-5 border-t border-black/10 bg-background/95 pb-3 pt-3 backdrop-blur">
+                  the end of the form scrolls into view. Carries the selected
+                  (in hall) and suggested (need) sizes so both stay fully
+                  visible while sizes are being tapped anywhere in the form. */}
+              <div className="sticky bottom-0 z-30 mt-5 border-t border-black/10 bg-background/95 pb-3 pt-2.5 backdrop-blur">
+                <div className="flex items-start gap-2.5">
+                  <span className="w-14 shrink-0 pt-2 text-[11px] font-semibold uppercase tracking-wide text-black/45">
+                    In hall
+                  </span>
+                  <div className="flex min-h-9 flex-1 flex-wrap items-center gap-1.5">
+                    {presentSizeTokens.length ? (
+                      presentSizeTokens.map((token, index) => (
+                        <button
+                          key={`${token}-${index}`}
+                          type="button"
+                          onClick={() => {
+                            setPresentSizesQty((prev) => ({
+                              ...prev,
+                              [token]: Math.max(0, (prev[token] ?? 0) - 1),
+                            }));
+                          }}
+                          className="rounded-md border border-black/10 bg-white px-2.5 py-1.5 text-sm font-semibold active:scale-[0.97]"
+                          title="Remove one"
+                        >
+                          {token}
+                        </button>
+                      ))
+                    ) : (
+                      <span className="text-sm text-black/45">-</span>
+                    )}
+                  </div>
+                  <span className="shrink-0 self-center rounded-full bg-accent-soft px-2.5 py-1 text-sm font-bold text-accent">
+                    {hallPresentCount} / {hallTargetCount}
+                  </span>
+                </div>
+
+                <div className="mt-1 flex items-start gap-2.5">
+                  <span className="w-14 shrink-0 pt-2 text-[11px] font-semibold uppercase tracking-wide text-accent">
+                    Need
+                  </span>
+                  <div className="flex min-h-9 flex-1 flex-wrap items-center gap-1.5">
+                    {neededSizeTokens.length ? (
+                      neededSizeTokens.map((token, index) => (
+                        <span
+                          key={`need-${token}-${index}`}
+                          className="rounded-md bg-accent-soft px-2.5 py-1.5 text-sm font-semibold text-accent"
+                        >
+                          {token}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-sm text-black/45">-</span>
+                    )}
+                  </div>
+                </div>
+
+                {requiredHints.length ? (
+                  <p className="mt-1 text-xs font-semibold text-danger">
+                    Required: {requiredHints.join(" · ")}
+                  </p>
+                ) : null}
+
                 <button
                   onClick={() => void handleAddItem()}
-                  disabled={busy || (lastParsed?.article.length ?? 0) < 5}
-                  className="w-full bg-accent px-4 py-4 text-[13px] font-medium uppercase tracking-[0.04em] text-white disabled:opacity-60"
+                  disabled={busy || requiredHints.length > 0}
+                  className="mt-2 w-full bg-accent px-4 py-4 text-[13px] font-medium uppercase tracking-[0.04em] text-white disabled:opacity-60"
                 >
                   Add to list
                 </button>
@@ -2230,7 +2355,7 @@ export default function Home() {
                                   <div className="flex gap-2 pt-1">
                                     <button
                                       type="button"
-                                      disabled={busy || !editArticle}
+                                      disabled={busy || !editArticle || editTokens.length === 0}
                                       onClick={() => void saveEdit(item)}
                                       className="flex-1 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
                                     >

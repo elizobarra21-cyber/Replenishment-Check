@@ -1,6 +1,7 @@
 import { RequestStatus } from "@prisma/client";
 import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
+import { sweepExpiredLabelPhotos } from "@/lib/photo-cleanup";
 import { prisma } from "@/lib/prisma";
 
 // Run this function in Frankfurt (fra1) - closest to the Supabase DB and to Israel.
@@ -12,6 +13,10 @@ export async function GET(request: Request) {
   if (!session) {
     return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   }
+
+  // The session list loads on every sign-in / finish, which makes it a good
+  // place to clear label photos of sessions finished more than a day ago.
+  await sweepExpiredLabelPhotos();
 
   const requests = await prisma.replenishmentRequest.findMany({
     where: { userId: session.uid },

@@ -17,6 +17,11 @@
 - Размеры в зале всегда выбираются из `XS S M L XL`.
 - Размеры можно выбирать до завершения OCR.
 - `Suggested sizes` - отсутствующие размеры из `XS S M L XL`.
+- Обязательные поля ввода: артикул (5+ цифр), размерная сетка (`sizeGridChosen`: автоопределение из этикетки или явный тап; дефолт "letter" не считается выбором и не подсвечивается) и хотя бы один размер в зале. Пока они не заполнены, `Add to list` заблокирована и над ней показывается `Required: ...`. `/api/scan` валидирует то же на сервере (`sizeSystem` обязателен, `presentSizesQty` непустой).
+- Выбранные размеры (`In hall` + счетчик X/Y) и `Need` живут в sticky-панели внизу вместе с `Add to list` - отдельных блоков "выбранные под плитками" и "Suggested sizes" в форме больше нет; не возвращать их.
+- Фото этикеток: `RequestItem.labelPhotoUrl` очищается автоматически через 1 день после Finish (`lib/photo-cleanup.ts`, sweep из `GET /api/requests`, `await` - у Supabase pooled connection limit 1, фоновые запросы конкурируют с основными). `ScanFeedback.labelPhotoUrl` (отладка сканера) не трогается.
+- История сессий (`Your sessions`, раскрытая): по товару - департамент, артикул, цвет (образец + код), present/need плитками, `X/Y`, заметка; ниже кнопки `Download PDF` и `Email to star00@list.ru`.
+- PDF-отчет: `lib/report.ts` (общий builder) + `lib/pdf.ts` (`pdf-lib` + встроенный DejaVu subset из `lib/fonts/dejavu.ts` - кириллица обязана работать, стандартный Helvetica ее не умеет). `GET /api/requests/[id]/report` - скачивание (Content-Disposition: attachment), `POST` - письмо на `REPORT_TO` (default `star00@list.ru`); без `RESEND_API_KEY` POST честно возвращает `email-not-configured`.
 - Код этикетки целевой длины - 17 цифр.
 - Сканер читает код только из узкой полосы непосредственно над штрих-кодом; сам баркод, EAN под ним и прочие числа на этикетке не считываются.
 - Палитра расположена вплотную к полю `color`. Выбранный визуальный цвет пишется в `RequestItem.colorName` через `/api/scan` и показывается образцом в Hall-списке и в Warehouse mode. Кодовое значение `color` из этикетки сохраняется отдельно, как раньше.
@@ -48,6 +53,8 @@
 - Заявка и восстановление списка: `app/api/requests/route.ts` (создание) и `app/api/requests/[id]/route.ts` (`GET` товары, `PATCH` статус).
 - Отметка товара на складе: `app/api/items/[id]/route.ts` (`PATCH pickStatus`).
 - Warehouse view: `app/api/requests/[id]/warehouse/route.ts`.
+- PDF-отчет: `app/api/requests/[id]/report/route.ts` (GET download / POST email), `lib/report.ts`, `lib/pdf.ts`, `lib/mailer.ts`, шрифты `lib/fonts/`.
+- Авточистка фото: `lib/photo-cleanup.ts`.
 - Prisma schema: `prisma/schema.prisma`.
 
 ## Работа с документацией
