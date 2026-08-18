@@ -406,18 +406,14 @@ function SizeTiles({
 }
 
 // Manual size-grid override: gender (Women/Men) + category (Letter/Jeans/Numeric).
-// With chosen=false nothing is highlighted: the grid is a required field and
-// the working default must not look like a made choice.
 function SizeGridPicker({
   system,
   onChange,
   compact = false,
-  chosen = true,
 }: {
   system: SizeSystem;
   onChange: (next: SizeSystem) => void;
   compact?: boolean;
-  chosen?: boolean;
 }) {
   const gender = genderOf(system);
   const category = categoryOf(system);
@@ -437,7 +433,7 @@ function SizeGridPicker({
             key={g}
             type="button"
             onClick={() => onChange(sizeSystemFromParts(g, category))}
-            className={btn(chosen && gender === g)}
+            className={btn(gender === g)}
           >
             {g === "women" ? "Women" : "Men"}
           </button>
@@ -451,7 +447,7 @@ function SizeGridPicker({
             key={c.value}
             type="button"
             onClick={() => onChange(sizeSystemFromParts(gender, c.value))}
-            className={btn(chosen && category === c.value)}
+            className={btn(category === c.value)}
           >
             {c.label}
           </button>
@@ -556,10 +552,12 @@ export default function Home() {
   const [entryStarted, setEntryStarted] = useState(false);
   // Size system detected from the label's EUR line.
   const [sizeSystem, setSizeSystem] = useState<SizeSystem>("letter");
-  // Size grid is a required field: true once auto-detected from the label or
-  // picked by hand. "letter" stays as the working default for the size tiles,
-  // but the item cannot be added until the grid is confirmed.
-  const [sizeGridChosen, setSizeGridChosen] = useState(false);
+  // The whole sizes area (tiles + selected + suggested); a size tap scrolls it
+  // fully into view so the selection and suggestions are always visible.
+  const sizesRef = useRef<HTMLDivElement | null>(null);
+  // Set by a tile tap; the effect below scrolls after the re-render commits,
+  // so the measurement includes the freshly added token.
+  const scrollSizesPending = useRef(false);
   // Per-session PDF report emailing state (session history panel).
   const [reportStatus, setReportStatus] = useState<
     Record<string, "sending" | "sent" | "error" | "not-configured">
@@ -739,13 +737,23 @@ export default function Home() {
   const hallPresentCount = presentTotal(presentSizesQty);
   const hallTargetCount = targetTotal(targetSizes);
 
-  // Required fields for "Add to list": article, an explicit size grid and at
-  // least one size marked as present in the hall.
-  const requiredHints = [
-    (lastParsed?.article.length ?? 0) < 5 ? "article" : "",
-    !sizeGridChosen ? "size grid" : "",
-    hallPresentCount === 0 ? "sizes in hall" : "",
-  ].filter(Boolean);
+  // Tapping a size tile adds one and scrolls the whole sizes area (tiles +
+  // selected + suggested) into view so the result of the tap is visible.
+  function handlePickSize(size: string) {
+    scrollSizesPending.current = true;
+    setPresentSizesQty((prev) => ({
+      ...prev,
+      [size]: (prev[size] ?? 0) + 1,
+    }));
+  }
+
+  useEffect(() => {
+    if (!scrollSizesPending.current) {
+      return;
+    }
+    scrollSizesPending.current = false;
+    sizesRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [presentSizesQty]);
 
   // Hall short list: plain add order, newest on top (no department grouping).
   const hallListItems = useMemo(() => [...draftItems].reverse(), [draftItems]);
@@ -863,7 +871,6 @@ export default function Home() {
     setFrontSize(null);
     setNote("");
     setSizeSystem("letter");
-    setSizeGridChosen(false);
     setLastParsed(null);
     setScanOcr(null);
     setScanRating(null);
@@ -907,10 +914,7 @@ export default function Home() {
       // printed on the label.
       const hints = await hintsPromise;
       const dept = extracted.parsed?.storageSection ?? "";
-      const resolvedSystem = resolveSizeSystem(hints?.size ?? null, dept);
-      setSizeSystem(resolvedSystem ?? "letter");
-      // Auto-detection satisfies the required size-grid field.
-      setSizeGridChosen(Boolean(resolvedSystem));
+      setSizeSystem(resolveSizeSystem(hints?.size ?? null, dept) ?? "letter");
       if (hints?.color) {
         setColorValue(hints.color);
       }
@@ -941,7 +945,6 @@ export default function Home() {
     setError("");
     setPhotoNotice("");
     setSizeSystem("letter");
-    setSizeGridChosen(false);
     setFrontSize(null);
     setNote("");
     setCurrentLabelPhotoUrl(null);
@@ -1030,7 +1033,6 @@ export default function Home() {
       setPresentSizesQty({});
       setEntryStarted(false);
       setSizeSystem("letter");
-      setSizeGridChosen(false);
       setFrontSize(null);
       setNote("");
 
@@ -1129,7 +1131,6 @@ export default function Home() {
       setScannedForCurrentItem(false);
       setEntryStarted(false);
       setSizeSystem("letter");
-      setSizeGridChosen(false);
       setFrontSize(null);
       setNote("");
       setSendReport(false);
@@ -1982,24 +1983,26 @@ export default function Home() {
 
               <div className="mt-4 border-t border-black/10 pt-4">
                 <p className="text-[13px] font-semibold uppercase tracking-[0.04em] text-black">
-                  Size grid <span className="text-danger">*</span>
+                  Size grid
                 </p>
                 <div className="mt-2">
-                  <SizeGridPicker
-                    system={sizeSystem}
-                    chosen={sizeGridChosen}
-                    onChange={(next) => {
-                      setSizeSystem(next);
-                      setSizeGridChosen(true);
-                    }}
-                  />
+                  <SizeGridPicker system={sizeSystem} onChange={setSizeSystem} />
                 </div>
               </div>
 
+              {/* The whole sizes area shares one ref: tapping a size scrolls
+                  it fully into view (selected + suggested included); scroll-mb
+                  keeps its end above the sticky Add bar. */}
+              <div ref={sizesRef} className="scroll-mb-28">
               <div className="mt-4 border-t border-black/10 pt-4">
-                <p className="text-[13px] font-semibold uppercase tracking-[0.04em] text-black">
-                  Choose existing sizes <span className="text-danger">*</span>
-                </p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[13px] font-semibold uppercase tracking-[0.04em] text-black">
+                    Choose existing sizes
+                  </p>
+                  <span className="rounded-full bg-accent-soft px-2.5 py-1 text-sm font-bold text-accent">
+                    in hall {hallPresentCount} / {hallTargetCount}
+                  </span>
+                </div>
                 <div
                   className={`mt-2 grid gap-2 ${
                     selectableSizes.length > 5 ? "grid-cols-4" : "grid-cols-5"
@@ -2009,12 +2012,7 @@ export default function Home() {
                     <button
                       key={size}
                       type="button"
-                      onClick={() => {
-                        setPresentSizesQty((prev) => ({
-                          ...prev,
-                          [size]: (prev[size] ?? 0) + 1,
-                        }));
-                      }}
+                      onClick={() => handlePickSize(size)}
                       className="min-h-14 rounded-xl border border-black/15 bg-white px-3 py-3 text-center transition-colors active:scale-[0.97]"
                     >
                       <span className="text-sm font-normal text-black">{size}</span>
@@ -2022,6 +2020,49 @@ export default function Home() {
                   ))}
                 </div>
 
+                <div className="mt-3 flex min-h-8 flex-wrap gap-1.5">
+                  {presentSizeTokens.length ? (
+                    presentSizeTokens.map((token, index) => (
+                      <button
+                        key={`${token}-${index}`}
+                        type="button"
+                        onClick={() => {
+                          setPresentSizesQty((prev) => ({
+                            ...prev,
+                            [token]: Math.max(0, (prev[token] ?? 0) - 1),
+                          }));
+                        }}
+                        className="rounded-md border border-black/10 bg-white px-2.5 py-1.5 text-sm font-semibold active:scale-[0.97]"
+                        title="Remove one"
+                      >
+                        {token}
+                      </button>
+                    ))
+                  ) : (
+                    <span className="text-sm text-black/55">-</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-4 border-t border-black/10 pt-4">
+                <p className="text-[13px] font-semibold uppercase tracking-[0.04em] text-black">
+                  Suggested sizes
+                </p>
+                <div className="mt-2 flex min-h-8 flex-wrap gap-1.5">
+                  {neededSizeTokens.length ? (
+                    neededSizeTokens.map((token, index) => (
+                      <span
+                        key={`need-${token}-${index}`}
+                        className="rounded-md bg-accent-soft px-2.5 py-1.5 text-sm font-semibold text-accent"
+                      >
+                        {token}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-sm text-black/60">-</span>
+                  )}
+                </div>
+              </div>
               </div>
 
               <div className="mt-4 border-t border-black/10 pt-4">
@@ -2039,71 +2080,12 @@ export default function Home() {
 
               {/* Sticks to the bottom of the screen while the entry form is
                   taller than the viewport; docks into this natural spot once
-                  the end of the form scrolls into view. Carries the selected
-                  (in hall) and suggested (need) sizes so both stay fully
-                  visible while sizes are being tapped anywhere in the form. */}
-              <div className="sticky bottom-0 z-30 mt-5 border-t border-black/10 bg-background/95 pb-3 pt-2.5 backdrop-blur">
-                <div className="flex items-start gap-2.5">
-                  <span className="w-14 shrink-0 pt-2 text-[11px] font-semibold uppercase tracking-wide text-black/45">
-                    In hall
-                  </span>
-                  <div className="flex min-h-9 flex-1 flex-wrap items-center gap-1.5">
-                    {presentSizeTokens.length ? (
-                      presentSizeTokens.map((token, index) => (
-                        <button
-                          key={`${token}-${index}`}
-                          type="button"
-                          onClick={() => {
-                            setPresentSizesQty((prev) => ({
-                              ...prev,
-                              [token]: Math.max(0, (prev[token] ?? 0) - 1),
-                            }));
-                          }}
-                          className="rounded-md border border-black/10 bg-white px-2.5 py-1.5 text-sm font-semibold active:scale-[0.97]"
-                          title="Remove one"
-                        >
-                          {token}
-                        </button>
-                      ))
-                    ) : (
-                      <span className="text-sm text-black/45">-</span>
-                    )}
-                  </div>
-                  <span className="shrink-0 self-center rounded-full bg-accent-soft px-2.5 py-1 text-sm font-bold text-accent">
-                    {hallPresentCount} / {hallTargetCount}
-                  </span>
-                </div>
-
-                <div className="mt-1 flex items-start gap-2.5">
-                  <span className="w-14 shrink-0 pt-2 text-[11px] font-semibold uppercase tracking-wide text-accent">
-                    Need
-                  </span>
-                  <div className="flex min-h-9 flex-1 flex-wrap items-center gap-1.5">
-                    {neededSizeTokens.length ? (
-                      neededSizeTokens.map((token, index) => (
-                        <span
-                          key={`need-${token}-${index}`}
-                          className="rounded-md bg-accent-soft px-2.5 py-1.5 text-sm font-semibold text-accent"
-                        >
-                          {token}
-                        </span>
-                      ))
-                    ) : (
-                      <span className="text-sm text-black/45">-</span>
-                    )}
-                  </div>
-                </div>
-
-                {requiredHints.length ? (
-                  <p className="mt-1 text-xs font-semibold text-danger">
-                    Required: {requiredHints.join(" · ")}
-                  </p>
-                ) : null}
-
+                  the end of the form scrolls into view. */}
+              <div className="sticky bottom-0 z-30 mt-5 border-t border-black/10 bg-background/95 pb-3 pt-3 backdrop-blur">
                 <button
                   onClick={() => void handleAddItem()}
-                  disabled={busy || requiredHints.length > 0}
-                  className="mt-2 w-full bg-accent px-4 py-4 text-[13px] font-medium uppercase tracking-[0.04em] text-white disabled:opacity-60"
+                  disabled={busy || (lastParsed?.article.length ?? 0) < 5}
+                  className="w-full bg-accent px-4 py-4 text-[13px] font-medium uppercase tracking-[0.04em] text-white disabled:opacity-60"
                 >
                   Add to list
                 </button>
@@ -2355,7 +2337,7 @@ export default function Home() {
                                   <div className="flex gap-2 pt-1">
                                     <button
                                       type="button"
-                                      disabled={busy || !editArticle || editTokens.length === 0}
+                                      disabled={busy || !editArticle}
                                       onClick={() => void saveEdit(item)}
                                       className="flex-1 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
                                     >

@@ -46,17 +46,9 @@ const scanSchema = z.object({
     .default(""),
   presentSizesQty: z.record(z.string(), z.union([z.number(), z.string()])),
   orderedSizes: z.array(z.string()).optional(),
-  // Required field: the hall worker must confirm the size grid explicitly
-  // (or have it auto-detected from the label) before adding an item.
-  sizeSystem: z.enum([
-    "letter",
-    "small",
-    "large",
-    "men-letter",
-    "men-small",
-    "men-large",
-    "men-shirt",
-  ]),
+  sizeSystem: z
+    .enum(["letter", "small", "large", "men-letter", "men-small", "men-large", "men-shirt"])
+    .optional(),
   frontSize: z.number().int().nullable().optional(),
   warehouseNote: z.string().trim().max(500).optional().default(""),
 });
@@ -129,22 +121,17 @@ export async function POST(request: Request) {
   }
 
   const presentSizesQty = normalizeSizeQty(parsed.data.presentSizesQty);
-  // Required field: at least one size present in the hall (the scanned garment
-  // itself hangs there, so an empty selection means the step was skipped).
-  if (Object.keys(presentSizesQty).length === 0) {
-    return NextResponse.json(
-      { error: "Mark the sizes present in the hall before adding." },
-      { status: 400 },
-    );
-  }
-
   const product = await getOrCreateScannedProduct(parsed.data.article);
   // Target multiset by size: from the size system + front (fronts double sizes
-  // up to their capacity).
-  const targetQtyBySize = buildTargetSizes(
-    parsed.data.sizeSystem,
-    parsed.data.frontSize ?? null,
-  );
+  // up to their capacity), or a flat "one of each" fallback for older clients.
+  const targetQtyBySize = parsed.data.sizeSystem
+    ? buildTargetSizes(parsed.data.sizeSystem, parsed.data.frontSize ?? null)
+    : Object.fromEntries(
+        (parsed.data.orderedSizes?.length
+          ? parsed.data.orderedSizes
+          : HALL_REQUIRED_SIZES
+        ).map((size) => [size, 1]),
+      );
   const orderedSizes = Object.keys(targetQtyBySize);
   const neededSizesQty = computeNeededSizes(
     orderedSizes,
