@@ -375,20 +375,34 @@ function SizeTiles({
 }: {
   map: SizeQtyMap;
   variant: "need" | "present";
-  tileSize?: "sm" | "lg";
+  // "xs" is a single-line variant (no wrapping) for dense rows like the
+  // session history.
+  tileSize?: "xs" | "sm" | "lg";
 }) {
   const tokens = explodeSizeMap(map, inferOrderedSizes(map));
   if (!tokens.length) {
-    return <span className="text-sm text-black/35">-</span>;
+    return (
+      <span className={`text-black/35 ${tileSize === "xs" ? "text-[10px]" : "text-sm"}`}>
+        -
+      </span>
+    );
   }
 
   const sizing =
     tileSize === "lg"
       ? "min-w-10 px-2.5 py-2 text-sm"
-      : "min-w-7 px-1.5 py-1 text-xs";
+      : tileSize === "xs"
+        ? "min-w-[18px] px-1 py-0.5 text-[10px]"
+        : "min-w-7 px-1.5 py-1 text-xs";
+  const layout =
+    tileSize === "lg"
+      ? "flex-wrap gap-1.5"
+      : tileSize === "xs"
+        ? "flex-nowrap gap-0.5"
+        : "flex-wrap gap-1";
 
   return (
-    <span className={`inline-flex flex-wrap align-middle ${tileSize === "lg" ? "gap-1.5" : "gap-1"}`}>
+    <span className={`inline-flex align-middle ${layout}`}>
       {tokens.map((token, index) => (
         <span
           key={`${token}-${index}`}
@@ -1632,46 +1646,47 @@ export default function Home() {
                           <p className="text-black/40">No items.</p>
                         ) : (
                           <>
-                            {/* Per item: department - article - color - present
-                                sizes - needed sizes - hall X/Y - note. */}
-                            <ul className="space-y-2">
+                            {/* One line per item: department - article - color -
+                                present - need - hall X/Y - note (truncated). */}
+                            <ul className="space-y-1.5">
                               {items.map((item) => (
-                                <li key={item.id}>
-                                  <div className="flex items-center justify-between gap-2">
-                                    <span className="flex min-w-0 items-center gap-1.5">
-                                      <span className="shrink-0 font-semibold uppercase tracking-wide text-black/40">
-                                        {item.storageSection?.trim() || "-"}
-                                      </span>
-                                      <span className="truncate font-bold text-black/75">
-                                        {item.article}
-                                      </span>
-                                      {item.colorName ? (
-                                        <ColorSwatch value={item.colorName} size={12} />
-                                      ) : null}
-                                      {item.color ? (
-                                        <span className="shrink-0 text-black/45">
-                                          {item.color}
-                                        </span>
-                                      ) : null}
-                                    </span>
-                                    <span className="shrink-0 font-semibold text-black/50">
-                                      {presentTotal(item.presentSizesQty)}/{itemTargetCount(item)}
-                                    </span>
-                                  </div>
-                                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
-                                    <span className="inline-flex items-center gap-1.5 text-black/45">
-                                      present
-                                      <SizeTiles map={item.presentSizesQty} variant="present" />
-                                    </span>
-                                    <span className="inline-flex items-center gap-1.5 text-black/45">
-                                      need
-                                      <SizeTiles map={item.neededSizesQty} variant="need" />
-                                    </span>
-                                  </div>
+                                <li
+                                  key={item.id}
+                                  className="flex items-center gap-1.5 overflow-hidden whitespace-nowrap"
+                                >
+                                  <span className="shrink-0 font-semibold uppercase tracking-wide text-black/40">
+                                    {item.storageSection?.trim() || "-"}
+                                  </span>
+                                  <span className="shrink-0 font-bold text-black/75">
+                                    {item.article}
+                                  </span>
+                                  {item.colorName ? (
+                                    <ColorSwatch value={item.colorName} size={10} />
+                                  ) : null}
+                                  {item.color ? (
+                                    <span className="shrink-0 text-black/45">{item.color}</span>
+                                  ) : null}
+                                  <span className="shrink-0">
+                                    <SizeTiles
+                                      map={item.presentSizesQty}
+                                      variant="present"
+                                      tileSize="xs"
+                                    />
+                                  </span>
+                                  <span className="shrink-0">
+                                    <SizeTiles
+                                      map={item.neededSizesQty}
+                                      variant="need"
+                                      tileSize="xs"
+                                    />
+                                  </span>
+                                  <span className="shrink-0 font-semibold text-black/50">
+                                    {presentTotal(item.presentSizesQty)}/{itemTargetCount(item)}
+                                  </span>
                                   {item.warehouseNote ? (
-                                    <p className="mt-0.5 italic text-black/50">
+                                    <span className="min-w-0 flex-1 truncate italic text-black/45">
                                       {item.warehouseNote}
-                                    </p>
+                                    </span>
                                   ) : null}
                                 </li>
                               ))}

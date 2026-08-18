@@ -12,6 +12,8 @@ export type PdfLine = {
   bold?: boolean;
   // Extra left offset in points (for item lines under a department heading).
   indent?: number;
+  // Keep the line single: cut it with an ellipsis instead of wrapping.
+  truncate?: boolean;
 };
 
 const PAGE_WIDTH = 595.28; // A4
@@ -27,6 +29,22 @@ const OUTSIDE_SUBSET =
 
 function sanitizePdfText(text: string): string {
   return text.replace(OUTSIDE_SUBSET, "?");
+}
+
+function truncateLine(
+  text: string,
+  font: PDFFont,
+  size: number,
+  maxWidth: number,
+): string {
+  if (font.widthOfTextAtSize(text, size) <= maxWidth) {
+    return text;
+  }
+  let cut = text;
+  while (cut.length > 0 && font.widthOfTextAtSize(`${cut}...`, size) > maxWidth) {
+    cut = cut.slice(0, -1);
+  }
+  return `${cut.trimEnd()}...`;
 }
 
 function wrapLine(
@@ -68,12 +86,11 @@ export async function buildTextPdf(lines: PdfLine[]): Promise<Uint8Array> {
     const font = line.bold ? bold : regular;
     const indent = line.indent ?? 0;
     const lineHeight = size * 1.45;
-    const rows = wrapLine(
-      sanitizePdfText(line.text),
-      font,
-      size,
-      PAGE_WIDTH - MARGIN_X * 2 - indent,
-    );
+    const maxWidth = PAGE_WIDTH - MARGIN_X * 2 - indent;
+    const clean = sanitizePdfText(line.text);
+    const rows = line.truncate
+      ? [truncateLine(clean, font, size, maxWidth)]
+      : wrapLine(clean, font, size, maxWidth);
 
     for (const row of rows) {
       if (y - lineHeight < BOTTOM) {

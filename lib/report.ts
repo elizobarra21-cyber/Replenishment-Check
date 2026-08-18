@@ -90,6 +90,9 @@ export async function buildRequestReportPdf(data: RequestWithItems): Promise<Uin
   let currentDept: string | null | undefined;
   for (const item of items) {
     if (currentDept === undefined || item.storageSection !== currentDept) {
+      if (currentDept !== undefined) {
+        lines.push({ text: "", size: 5 });
+      }
       currentDept = item.storageSection;
       const deptItems = items.filter((i) => i.storageSection === currentDept);
       lines.push({
@@ -99,29 +102,29 @@ export async function buildRequestReportPdf(data: RequestWithItems): Promise<Uin
       });
     }
 
+    // One line per item: article - color - present - need - hall X/Y - note
+    // (truncated with "..." if the line does not fit the page width).
     const present = asMap(item.presentSizesQty);
     const colorParts = [
-      item.color ? `color ${item.color}` : "",
+      item.color ?? "",
       item.colorName ? `(${resolveColor(item.colorName).label})` : "",
     ]
       .filter(Boolean)
       .join(" ");
+    const chunks = [
+      item.article,
+      colorParts,
+      `p: ${sizeTokens(present)}`,
+      `n: ${sizeTokens(asMap(item.neededSizesQty))}`,
+      `${presentTotal(present)}/${itemTargetCount(item)}`,
+      item.warehouseNote ? `- ${item.warehouseNote}` : "",
+    ].filter(Boolean);
     lines.push({
-      text: `${item.article}${colorParts ? `  ${colorParts}` : ""}  hall ${presentTotal(
-        present,
-      )}/${itemTargetCount(item)}`,
-      bold: true,
-      indent: 12,
-    });
-    lines.push({
-      text: `present: ${sizeTokens(present)}   need: ${sizeTokens(asMap(item.neededSizesQty))}`,
+      text: chunks.join("  "),
       size: 10,
-      indent: 24,
+      indent: 12,
+      truncate: true,
     });
-    if (item.warehouseNote) {
-      lines.push({ text: `note: ${item.warehouseNote}`, size: 10, indent: 24 });
-    }
-    lines.push({ text: "", size: 4 });
   }
 
   return buildTextPdf(lines);
