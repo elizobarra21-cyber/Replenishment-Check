@@ -133,15 +133,16 @@ const SIZE_CONFIGS: Record<SizeSystem, SizeConfig> = {
     optional: ["28", "34"],
     doublePref: ["29", "30", "31", "32", "33"],
   },
+  // Like men-letter: 4 mandatory sizes, the smallest is optional.
   "men-large": {
-    mandatory: ["44", "46", "48", "50", "52"],
-    optional: ["54"],
+    mandatory: ["46", "48", "50", "52"],
+    optional: ["44", "54"],
     doublePref: ["48", "50", "46", "52", "44", "54"],
   },
   // Men's shirts (collar sizes).
   "men-shirt": {
-    mandatory: ["38", "39", "40", "41", "42"],
-    optional: [],
+    mandatory: ["39", "40", "41", "42"],
+    optional: ["38"],
     doublePref: ["39", "40", "41"],
   },
 };
