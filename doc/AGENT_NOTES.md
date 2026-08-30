@@ -40,7 +40,7 @@
 - Warehouse mode компактный: 1-2 строки на товар; заголовок группы - `Department {storageSection}`. `need`/`present` размеры - плитками без `xN` (`need` акцентный, `present` контурный); рядом с кодом `color` - образец выбранного цвета.
 - Аутентификация: основной вход - Google OAuth (`/api/auth/google` + `/api/auth/google/callback`, `lib/google-oauth.ts`; env `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`, опционально `APP_URL`). Логин/пароль - fallback (в т.ч. для локальной разработки), не удалять без явной просьбы. `User.passwordHash` nullable; `email`/`googleId` unique.
 - `Rate scan` (после скана, опционально): `POST /api/scan-feedback` сохраняет замороженный OCR-результат (до ручных правок) + фото в `ScanFeedback` - это отладочные данные сканера.
-- Мужские сетки: 5 базовых размеров; `men-shirt` = `38 39 40 41 42` (категория Shirt видна только для Men). Автоопределение: мужской отдел + EUR 38..43 -> `men-shirt`.
+- Мужские сетки: `men-letter` = 4 базовых `S M L XL` + optional `XS` (пользовательское решение 2026-08-18: XS не входит в цель, а предлагается на складе как "XS?" если его нет); остальные мужские - 5 базовых; `men-shirt` = `38 39 40 41 42` (категория Shirt видна только для Men). Автоопределение: мужской отдел + EUR 38..43 -> `men-shirt`.
 
 ## Текущая архитектура
 

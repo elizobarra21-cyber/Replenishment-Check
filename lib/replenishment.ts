@@ -121,10 +121,11 @@ const SIZE_CONFIGS: Record<SizeSystem, SizeConfig> = {
     optional: ["44"],
     doublePref: ["36", "38", "40", "42", "34", "44"],
   },
-  // Men's grids carry 5 mandatory sizes, extended from the smaller side.
+  // Men's letter grid: 4 mandatory sizes; XS is optional (suggested in the
+  // warehouse only as a "bring if available" hint, never counted in the target).
   "men-letter": {
-    mandatory: ["XS", "S", "M", "L", "XL"],
-    optional: [],
+    mandatory: ["S", "M", "L", "XL"],
+    optional: ["XS"],
     doublePref: ["S", "M", "L"],
   },
   "men-small": {
