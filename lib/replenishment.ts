@@ -147,10 +147,124 @@ const SIZE_CONFIGS: Record<SizeSystem, SizeConfig> = {
   },
 };
 
-const LETTER_ORDER = ["XS", "S", "M", "L", "XL"];
+const LETTER_ORDER = ["XXS", "XS", "S", "M", "L", "XL", "XXL", "XXXL"];
 
-function configFor(system: SizeSystem): SizeConfig {
-  return SIZE_CONFIGS[system] ?? SIZE_CONFIGS.letter;
+// --- Per-user layout (Settings -> Customize layout) --------------------------
+
+// A user's override for one size grid: which sizes count toward the target
+// (mandatory), which are offered but only "bring if available" (optional), and
+// any custom sizes the user added to the tile pool (kept even while switched off).
+export type GridLayout = {
+  mandatory: string[];
+  optional: string[];
+  custom?: string[];
+};
+
+// A front (display rack) is identified by its capacity; items store only the
+// capacity (RequestItem.frontSize), the name is a display label.
+export type FrontOption = { capacity: number; name?: string };
+
+// Everything a user can customize. Missing parts fall back to the defaults, so
+// a null/empty layout behaves exactly like the built-in configuration.
+export type SizeLayout = {
+  grids?: Partial<Record<SizeSystem, GridLayout>>;
+  fronts?: FrontOption[];
+};
+
+export const DEFAULT_FRONTS: FrontOption[] = [{ capacity: 6 }, { capacity: 8 }];
+export const MAX_FRONT_CAPACITY = 30;
+
+// Candidate tiles shown in the layout editor for each grid (defaults and any
+// custom sizes are merged in).
+export const SIZE_POOLS: Record<SizeSystem, string[]> = {
+  letter: ["XXS", "XS", "S", "M", "L", "XL", "XXL"],
+  small: ["23", "24", "25", "26", "27", "28", "29", "30", "31", "32", "33", "34"],
+  large: ["32", "34", "36", "38", "40", "42", "44", "46", "48"],
+  "men-letter": ["XS", "S", "M", "L", "XL", "XXL", "XXXL"],
+  "men-small": ["27", "28", "29", "30", "31", "32", "33", "34", "36", "38"],
+  "men-large": ["42", "44", "46", "48", "50", "52", "54", "56", "58"],
+  "men-shirt": ["37", "38", "39", "40", "41", "42", "43", "44", "45"],
+};
+
+export function defaultGridLayout(system: SizeSystem): GridLayout {
+  const cfg = SIZE_CONFIGS[system] ?? SIZE_CONFIGS.letter;
+  return { mandatory: [...cfg.mandatory], optional: [...cfg.optional] };
+}
+
+function cleanSizeList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const out: string[] = [];
+  for (const raw of value) {
+    const size = String(raw ?? "").trim().toUpperCase();
+    if (/^[A-Z0-9/.-]{1,8}$/.test(size) && !out.includes(size)) out.push(size);
+  }
+  return out.slice(0, 40);
+}
+
+// Validate/sanitize a stored or submitted layout. Invalid parts are dropped
+// (fall back to defaults) rather than rejected, so a bad value can never break
+// scanning. A grid override needs at least one mandatory size.
+export function normalizeLayout(raw: unknown): SizeLayout {
+  const input = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const layout: SizeLayout = {};
+
+  const gridsIn = (input.grids && typeof input.grids === "object"
+    ? input.grids
+    : {}) as Record<string, unknown>;
+  const grids: Partial<Record<SizeSystem, GridLayout>> = {};
+  for (const system of ALL_SIZE_SYSTEMS) {
+    const g = gridsIn[system] as Record<string, unknown> | undefined;
+    if (!g || typeof g !== "object") continue;
+    const mandatory = cleanSizeList(g.mandatory);
+    const optional = cleanSizeList(g.optional).filter((s) => !mandatory.includes(s));
+    const custom = cleanSizeList(g.custom);
+    if (mandatory.length === 0) continue;
+    grids[system] = custom.length ? { mandatory, optional, custom } : { mandatory, optional };
+  }
+  if (Object.keys(grids).length) layout.grids = grids;
+
+  if (Array.isArray(input.fronts)) {
+    const fronts: FrontOption[] = [];
+    for (const f of input.fronts as Array<Record<string, unknown>>) {
+      const capacity = Math.floor(Number(f?.capacity));
+      if (!Number.isFinite(capacity) || capacity < 1 || capacity > MAX_FRONT_CAPACITY) continue;
+      if (fronts.some((x) => x.capacity === capacity)) continue;
+      const name = String(f?.name ?? "").trim().slice(0, 24);
+      fronts.push(name ? { capacity, name } : { capacity });
+    }
+    layout.fronts = fronts.sort((a, b) => a.capacity - b.capacity);
+  }
+
+  return layout;
+}
+
+export function frontsFor(layout?: SizeLayout | null): FrontOption[] {
+  return layout?.fronts ?? DEFAULT_FRONTS;
+}
+
+export function frontLabel(capacity: number, layout?: SizeLayout | null): string {
+  const named = frontsFor(layout).find((f) => f.capacity === capacity)?.name;
+  return named || `Front ${capacity}`;
+}
+
+function configFor(system: SizeSystem, layout?: SizeLayout | null): SizeConfig {
+  const base = SIZE_CONFIGS[system] ?? SIZE_CONFIGS.letter;
+  const override = layout?.grids?.[system];
+  if (!override || override.mandatory.length === 0) {
+    return base;
+  }
+  // Keep the built-in doubling preference for sizes that are still in the
+  // grid, then any other mandatory sizes (e.g. custom ones) in grid order.
+  const inGrid = [...override.mandatory, ...override.optional];
+  const doublePref = base.doublePref.filter((s) => inGrid.includes(s));
+  for (const size of orderSizes(override.mandatory)) {
+    if (!doublePref.includes(size)) doublePref.push(size);
+  }
+  return {
+    mandatory: override.mandatory,
+    optional: override.optional.filter((s) => !override.mandatory.includes(s)),
+    doublePref,
+  };
 }
 
 // Backward-compatible aliases (women's systems keep their original names).
@@ -158,15 +272,15 @@ export const LETTER_SIZES = SIZE_CONFIGS.letter.mandatory;
 export const SMALL_SIZES = SIZE_CONFIGS.small.mandatory;
 export const LARGE_SIZES = SIZE_CONFIGS.large.mandatory;
 
-export function baseSizesFor(system: SizeSystem): string[] {
-  return configFor(system).mandatory;
+export function baseSizesFor(system: SizeSystem, layout?: SizeLayout | null): string[] {
+  return orderSizes(configFor(system, layout).mandatory);
 }
 
-export function optionalSizesFor(system: SizeSystem): string[] {
-  return configFor(system).optional;
+export function optionalSizesFor(system: SizeSystem, layout?: SizeLayout | null): string[] {
+  return orderSizes(configFor(system, layout).optional);
 }
 
-function orderSizes(sizes: string[]): string[] {
+export function orderSizes(sizes: string[]): string[] {
   const unique = Array.from(new Set(sizes));
   if (unique.length > 0 && unique.every((s) => /^\d+$/.test(s))) {
     return unique.sort((a, b) => Number(a) - Number(b));
@@ -179,8 +293,8 @@ function orderSizes(sizes: string[]): string[] {
 }
 
 // Sizes selectable in the hall (mandatory + optional), in display order.
-export function selectableSizesFor(system: SizeSystem): string[] {
-  const cfg = configFor(system);
+export function selectableSizesFor(system: SizeSystem, layout?: SizeLayout | null): string[] {
+  const cfg = configFor(system, layout);
   return orderSizes([...cfg.mandatory, ...cfg.optional]);
 }
 
@@ -243,8 +357,9 @@ export function resolveSizeSystem(
 export function buildTargetSizes(
   system: SizeSystem,
   frontSize: number | null | undefined,
+  layout?: SizeLayout | null,
 ): SizeQtyMap {
-  const cfg = configFor(system);
+  const cfg = configFor(system, layout);
   const base = frontSize ? [...cfg.mandatory, ...cfg.optional] : cfg.mandatory;
   const target: SizeQtyMap = {};
   for (const size of base) {

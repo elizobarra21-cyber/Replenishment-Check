@@ -36,24 +36,31 @@ model SizeSystem {
 
 /// Technical record for scanned articles. This is not a merchandise catalog.
 model Product {
-  id           String     @id @default(cuid())
-  article      String     @unique
+  id           String        @id @default(cuid())
+  article      String        @unique
   name         String
   sectionId    String
   sizeSystemId String
-  section      Section    @relation(fields: [sectionId], references: [id])
-  sizeSystem   SizeSystem @relation(fields: [sizeSystemId], references: [id])
+  section      Section       @relation(fields: [sectionId], references: [id])
+  sizeSystem   SizeSystem    @relation(fields: [sizeSystemId], references: [id])
   requestItems RequestItem[]
 }
 
 model User {
-  id           String                 @id @default(cuid())
-  username     String                 @unique
-  passwordHash String?
-  email        String?                @unique
-  googleId     String?                @unique
-  createdAt    DateTime               @default(now())
-  requests     ReplenishmentRequest[]
+  id            String                 @id @default(cuid())
+  username      String                 @unique
+  passwordHash  String?
+  email         String?                @unique
+  /// True only when the email came from Google; Google sign-in links an
+  /// existing account by email only if it is verified (a manually typed email
+  /// must never let a Google login land in someone else's account).
+  emailVerified Boolean                @default(false)
+  googleId      String?                @unique
+  /// Personal size-grid/front layout (Settings -> Customize layout); null =
+  /// built-in defaults. Shape: SizeLayout in lib/replenishment.ts.
+  layout        Json?
+  createdAt     DateTime               @default(now())
+  requests      ReplenishmentRequest[]
 }
 
 /// Optional feedback on scan quality, collected for OCR debugging.
@@ -84,27 +91,27 @@ model ReplenishmentRequest {
 }
 
 model RequestItem {
-  id                  String               @id @default(cuid())
-  requestId           String
-  productId           String
-  article             String
-  color               String?
-  colorName           String?
-  season              String?
-  storageSection      String?
-  labelPhotoUrl       String?
-  imageUrl            String?
-  presentSizesQty     Json
-  neededSizesQty      Json
-  substitutePriority  Json
-  pickedSizesQty      Json?
-  pickStatus          String?
-  warehouseNote       String?
-  sizeSystem          String?
-  frontSize           Int?
-  createdAt           DateTime             @default(now())
-  request             ReplenishmentRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
-  product             Product              @relation(fields: [productId], references: [id])
+  id                 String               @id @default(cuid())
+  requestId          String
+  productId          String
+  article            String
+  color              String?
+  colorName          String?
+  season             String?
+  storageSection     String?
+  labelPhotoUrl      String?
+  imageUrl           String?
+  presentSizesQty    Json
+  neededSizesQty     Json
+  substitutePriority Json
+  pickedSizesQty     Json?
+  pickStatus         String?
+  warehouseNote      String?
+  sizeSystem         String?
+  frontSize          Int?
+  createdAt          DateTime             @default(now())
+  request            ReplenishmentRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  product            Product              @relation(fields: [productId], references: [id])
 
   @@index([requestId])
 }

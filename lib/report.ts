@@ -10,12 +10,19 @@ import {
   ALL_SIZE_SYSTEMS,
   buildTargetSizes,
   presentTotal,
+  normalizeLayout,
   targetTotal,
+  type SizeLayout,
   type SizeQtyMap,
   type SizeSystem,
 } from "@/lib/replenishment";
 
-export type RequestWithItems = ReplenishmentRequest & { items: RequestItem[] };
+// `user.layout` (the owner's personal grids/fronts) is optional: without it
+// targets fall back to the built-in defaults.
+export type RequestWithItems = ReplenishmentRequest & {
+  items: RequestItem[];
+  user?: { layout: unknown } | null;
+};
 
 function asMap(value: unknown): SizeQtyMap {
   return (value ?? {}) as SizeQtyMap;
@@ -35,8 +42,8 @@ function itemSizeSystem(item: RequestItem): SizeSystem {
   return "letter";
 }
 
-function itemTargetCount(item: RequestItem): number {
-  return targetTotal(buildTargetSizes(itemSizeSystem(item), item.frontSize ?? null));
+function itemTargetCount(item: RequestItem, layout: SizeLayout | null): number {
+  return targetTotal(buildTargetSizes(itemSizeSystem(item), item.frontSize ?? null, layout));
 }
 
 // "XS S M M L" - repeated tokens like the size tiles in the UI.
@@ -71,6 +78,7 @@ export function reportFilename(data: RequestWithItems): string {
 }
 
 export async function buildRequestReportPdf(data: RequestWithItems): Promise<Uint8Array> {
+  const layout = data.user?.layout ? normalizeLayout(data.user.layout) : null;
   const items = [...data.items].sort(
     (a, b) =>
       genderRank(a.storageSection) - genderRank(b.storageSection) ||
@@ -116,7 +124,7 @@ export async function buildRequestReportPdf(data: RequestWithItems): Promise<Uin
       colorParts,
       `p: ${sizeTokens(present)}`,
       `n: ${sizeTokens(asMap(item.neededSizesQty))}`,
-      `${presentTotal(present)}/${itemTargetCount(item)}`,
+      `${presentTotal(present)}/${itemTargetCount(item, layout)}`,
       item.warehouseNote ? `- ${item.warehouseNote}` : "",
     ].filter(Boolean);
     lines.push({

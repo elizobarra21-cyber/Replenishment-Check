@@ -34,11 +34,20 @@ export async function GET(request: Request) {
     return failure(origin, "google-failed");
   }
 
-  // Match by Google id first, then link an existing account by email.
+  // Match by Google id first, then link an existing account by email - but
+  // only a verified one: emails typed in Settings are unverified, so nobody can
+  // pull someone else's Google login into their account by claiming an email.
   let user = await prisma.user.findUnique({ where: { googleId: profile.sub } });
+  if (user && profile.email && user.email === profile.email && !user.emailVerified) {
+    // Accounts created before emailVerified existed: Google confirms it now.
+    user = await prisma.user.update({
+      where: { id: user.id },
+      data: { emailVerified: true },
+    });
+  }
   if (!user && profile.email) {
     const byEmail = await prisma.user.findUnique({ where: { email: profile.email } });
-    if (byEmail) {
+    if (byEmail?.emailVerified && !byEmail.googleId) {
       user = await prisma.user.update({
         where: { id: byEmail.id },
         data: { googleId: profile.sub },
@@ -50,11 +59,18 @@ export async function GET(request: Request) {
     const base = profile.email ?? `google-${profile.sub.slice(0, 12)}`;
     // Usernames are unique; suffix with part of the Google id on collision.
     const taken = await prisma.user.findUnique({ where: { username: base } });
+    // Only claim the email if no other account holds it (an unverified
+    // typed-in copy stays with its owner; the unique index would throw).
+    const emailOwner = profile.email
+      ? await prisma.user.findUnique({ where: { email: profile.email } })
+      : null;
+    const freeEmail = profile.email && !emailOwner ? profile.email : null;
     const username = taken ? `${base}-${profile.sub.slice(0, 6)}` : base;
     user = await prisma.user.create({
       data: {
         username,
-        email: profile.email,
+        email: freeEmail,
+        emailVerified: Boolean(freeEmail),
         googleId: profile.sub,
       },
     });

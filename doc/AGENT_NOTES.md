@@ -42,6 +42,11 @@
 - `Rate scan` (после скана, опционально): `POST /api/scan-feedback` сохраняет замороженный OCR-результат (до ручных правок) + фото в `ScanFeedback` - это отладочные данные сканера.
 - Мужские сетки (пользовательское решение 2026-08-18): letter/numeric/shirt = 4 базовых, самый маленький размер optional (в цель не входит, на складе предлагается штрихованной подсказкой, если его нет). `men-letter` = `S M L XL` + опц. `XS`; `men-large` = `46 48 50 52` + опц. `44 54`; `men-shirt` = `39 40 41 42` + опц. `38` (категория Shirt видна только для Men). `men-small` (джинсы) остался 5 базовых `29..33` + опц. `28 34`. Автоопределение: мужской отдел + EUR 38..43 -> `men-shirt`.
 
+- Персональная раскладка (2026-09-24): `User.layout` (JSON `SizeLayout`: `grids` - только измененные сетки `{mandatory, optional, custom?}`, `fronts` - `[{capacity, name?}]`). Все функции расчета размеров (`buildTargetSizes`, `selectableSizesFor`, `optionalSizesFor`) принимают необязательный `layout` - при добавлении нового места расчета ОБЯЗАТЕЛЬНО передавать раскладку (клиент: state `layout` в `app/page.tsx`; сервер: `loadUserLayout(session.uid)` из `lib/user-layout.ts`, отчет - `request.user.layout`). Без `layout` = встроенные дефолты (`SIZE_CONFIGS`), дефолты не менять без явной просьбы. Любой ввод раскладки прогонять через `normalizeLayout`. Фронт у товара хранится только емкостью (`RequestItem.frontSize`, 1..30); имя - отображение, удаленный из раскладки фронт у старого товара продолжает считаться и показывается в редакторе товара.
+- Ролей/админов пока нет (решение пользователя 2026-09-24): каждый настраивает раскладку под себя, `/api/account` и `/api/layout` работают только с аккаунтом текущей сессии. Не добавлять доступ к чужим аккаунтам без ролевой модели (план - Фаза 6 в `DEVELOPMENT_PLAN.md`).
+- Google-линковка по email - только если `User.emailVerified` (email от Google). Email из Settings всегда `emailVerified=false`. Не ослаблять эту проверку.
+- `Log out` - в Settings (не в шапке); выход обязан вызывать `clearStoredSession()` из `lib/client-storage.ts`.
+
 ## Текущая архитектура
 
 - Основная UI-логика: `app/page.tsx`.
@@ -56,6 +61,7 @@
 - PDF-отчет: `app/api/requests/[id]/report/route.ts` (GET download / POST email), `lib/report.ts`, `lib/pdf.ts`, `lib/mailer.ts`, шрифты `lib/fonts/`.
 - Авточистка фото: `lib/photo-cleanup.ts`.
 - Prisma schema: `prisma/schema.prisma`.
+- Настройки: `app/settings/page.tsx` (аккаунт), `app/settings/layout/page.tsx` (раскладка), API `app/api/account/route.ts`, `app/api/layout/route.ts`, `lib/user-layout.ts`.
 
 ## Работа с документацией
 

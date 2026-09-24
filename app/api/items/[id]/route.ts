@@ -6,10 +6,12 @@ import {
   buildSubstitutePriority,
   buildTargetSizes,
   computeNeededSizes,
+  MAX_FRONT_CAPACITY,
   normalizeSizeQty,
   type SizeSystem,
 } from "@/lib/replenishment";
 import { prisma } from "@/lib/prisma";
+import { loadUserLayout } from "@/lib/user-layout";
 
 // Run this function in Frankfurt (fra1) - closest to the Supabase DB and to Israel.
 export const preferredRegion = "fra1";
@@ -25,7 +27,7 @@ const updateItemSchema = z.object({
   sizeSystem: z
     .enum(["letter", "small", "large", "men-letter", "men-small", "men-large", "men-shirt"])
     .optional(),
-  frontSize: z.number().int().nullable().optional(),
+  frontSize: z.number().int().min(1).max(MAX_FRONT_CAPACITY).nullable().optional(),
   presentSizesQty: z
     .record(z.string(), z.union([z.number(), z.string()]))
     .optional(),
@@ -35,7 +37,8 @@ export async function PATCH(
   request: Request,
   context: { params: Promise<{ id: string }> },
 ) {
-  if (!getSessionUser(request)) {
+  const session = getSessionUser(request);
+  if (!session) {
     return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   }
 
@@ -96,7 +99,8 @@ export async function PATCH(
         : ((existing.presentSizesQty as Record<string, number>) ?? {});
     const system = (d.sizeSystem ?? existing.sizeSystem ?? "letter") as SizeSystem;
     const front = d.frontSize !== undefined ? d.frontSize : existing.frontSize;
-    const target = buildTargetSizes(system, front ?? null);
+    const layout = await loadUserLayout(session.uid);
+    const target = buildTargetSizes(system, front ?? null, layout);
     const orderedSizes = Object.keys(target);
 
     data.presentSizesQty = present;

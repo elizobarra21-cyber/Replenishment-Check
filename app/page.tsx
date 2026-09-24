@@ -13,6 +13,8 @@ import {
   ALL_SIZE_SYSTEMS,
   buildTargetSizes,
   categoryOf,
+  frontLabel,
+  frontsFor,
   genderOf,
   optionalSizesFor,
   presentTotal,
@@ -22,8 +24,10 @@ import {
   targetTotal,
   type Gender,
   type SizeCategory,
+  type SizeLayout,
   type SizeSystem,
 } from "@/lib/replenishment";
+import Link from "next/link";
 import {
   extractArticleFromLabel,
   type LabelExtractionResult,
@@ -36,6 +40,13 @@ import {
   warmUpOcr,
 } from "@/lib/ocr";
 import { COMMON_COLORS, isHexColor, resolveColor } from "@/lib/colors";
+import {
+  clearStoredRequestId,
+  loadStoredMode,
+  loadStoredRequestId,
+  storeMode,
+  storeRequestId,
+} from "@/lib/client-storage";
 
 type SizeQtyMap = Record<string, number>;
 
@@ -63,20 +74,36 @@ function itemSizeSystem(item: RequestItem): SizeSystem {
   return "letter";
 }
 
-// Total expected to hang (Y) for a saved item.
-function itemTargetCount(item: RequestItem): number {
-  return targetTotal(buildTargetSizes(itemSizeSystem(item), item.frontSize ?? null));
+// Total expected to hang (Y) for a saved item, per the user's layout.
+function itemTargetCount(item: RequestItem, layout: SizeLayout | null): number {
+  return targetTotal(buildTargetSizes(itemSizeSystem(item), item.frontSize ?? null, layout));
 }
 
 // Optional (secondary) sizes to suggest in the warehouse for a non-front item:
 // the system's optional set, minus anything already present or needed.
-function optionalHintSizes(item: RequestItem): string[] {
+function optionalHintSizes(item: RequestItem, layout: SizeLayout | null): string[] {
   if (item.frontSize) return [];
-  return optionalSizesFor(itemSizeSystem(item)).filter(
+  return optionalSizesFor(itemSizeSystem(item), layout).filter(
     (size) =>
       !(Number(item.presentSizesQty?.[size]) > 0) &&
       !(Number(item.neededSizesQty?.[size]) > 0),
   );
+}
+
+// "On front" choices: No + the user's fronts (Settings -> Customize layout).
+// `keep` adds an item's current front even if it was removed from the layout.
+function frontChoices(
+  layout: SizeLayout | null,
+  keep?: number | null,
+): Array<[string, number | null]> {
+  const fronts = frontsFor(layout).map((f) => f.capacity);
+  if (keep && !fronts.includes(keep)) fronts.push(keep);
+  return [
+    ["No", null],
+    ...fronts
+      .sort((a, b) => a - b)
+      .map((capacity) => [frontLabel(capacity, layout), capacity] as [string, number]),
+  ];
 }
 
 // Order a size map for display: numeric keys sort numerically, otherwise use the
@@ -198,66 +225,6 @@ function errorMessage(value: unknown, fallback: string) {
   return typeof value === "string" && value.trim() ? value : fallback;
 }
 
-const REQUEST_STORAGE_KEY = "store-replenishment:request-id";
-
-function loadStoredRequestId(): string {
-  if (typeof window === "undefined") {
-    return "";
-  }
-  try {
-    return window.localStorage.getItem(REQUEST_STORAGE_KEY) ?? "";
-  } catch {
-    return "";
-  }
-}
-
-function storeRequestId(id: string) {
-  if (typeof window === "undefined") {
-    return;
-  }
-  try {
-    window.localStorage.setItem(REQUEST_STORAGE_KEY, id);
-  } catch {
-    // ignore storage errors (private mode, quota)
-  }
-}
-
-function clearStoredRequestId() {
-  if (typeof window === "undefined") {
-    return;
-  }
-  try {
-    window.localStorage.removeItem(REQUEST_STORAGE_KEY);
-  } catch {
-    // ignore
-  }
-}
-
-const MODE_STORAGE_KEY = "store-replenishment:mode";
-
-function loadStoredMode(): "hall" | "warehouse" | "" {
-  if (typeof window === "undefined") {
-    return "";
-  }
-  try {
-    const value = window.localStorage.getItem(MODE_STORAGE_KEY);
-    return value === "warehouse" || value === "hall" ? value : "";
-  } catch {
-    return "";
-  }
-}
-
-function storeMode(mode: "hall" | "warehouse") {
-  if (typeof window === "undefined") {
-    return;
-  }
-  try {
-    window.localStorage.setItem(MODE_STORAGE_KEY, mode);
-  } catch {
-    // ignore
-  }
-}
-
 function createEmptyParsedLabel(article = ""): ParsedLabel {
   return {
     rawLine: article,
@@ -297,6 +264,26 @@ function PencilIcon({ className }: { className?: string }) {
       aria-hidden
     >
       <path d="M13.4 3.3 16.7 6.6 6.6 16.7H3.3v-3.3L13.4 3.3Z" />
+    </svg>
+  );
+}
+
+// Thin line-art gear (Feather "settings" outline, MIT), same stroke style as
+// the other icons - the Settings link in the header.
+function GearIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
+      <circle cx="12" cy="12" r="3" />
+      <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" />
     </svg>
   );
 }
@@ -576,8 +563,10 @@ export default function Home() {
   const [reportStatus, setReportStatus] = useState<
     Record<string, "sending" | "sent" | "error" | "not-configured">
   >({});
-  // Front capacity: null = not on a front, otherwise 6 or 8 garments.
+  // Front capacity: null = not on a front, otherwise the front's capacity.
   const [frontSize, setFrontSize] = useState<number | null>(null);
+  // The user's personal grids/fronts; null = built-in defaults.
+  const [layout, setLayout] = useState<SizeLayout | null>(null);
   // Free-text comment for the current item (shown in both modes).
   const [note, setNote] = useState("");
   // Warehouse: DOM refs per item so marking one can scroll the next into view.
@@ -708,6 +697,16 @@ export default function Home() {
   }, [user]);
 
   useEffect(() => {
+    // Personal size layout (grids + fronts). Defaults stay in effect until it
+    // loads or if it fails - scanning never waits on it.
+    if (!user) return;
+    fetch("/api/layout")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => setLayout((json?.layout as SizeLayout | null) ?? null))
+      .catch(() => {});
+  }, [user]);
+
+  useEffect(() => {
     // Remember the current mode so a reload returns to it.
     storeMode(mode);
   }, [mode]);
@@ -721,10 +720,10 @@ export default function Home() {
     };
   }, []);
 
-  const selectableSizes = selectableSizesFor(sizeSystem);
+  const selectableSizes = selectableSizesFor(sizeSystem, layout);
   const targetSizes = useMemo(
-    () => buildTargetSizes(sizeSystem, frontSize),
-    [sizeSystem, frontSize],
+    () => buildTargetSizes(sizeSystem, frontSize, layout),
+    [sizeSystem, frontSize, layout],
   );
 
   const neededPreview = useMemo(() => {
@@ -853,19 +852,6 @@ export default function Home() {
     } finally {
       setAuthBusy(false);
     }
-  }
-
-  async function handleLogout() {
-    await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
-    clearStoredRequestId();
-    setUser(null);
-    setDraftItems([]);
-    setWarehouseGroups([]);
-    setSessions([]);
-    setRequestId("");
-    setEntryStarted(false);
-    setLastParsed(null);
-    setMode("hall");
   }
 
   async function handleScanLabel(file: File | null) {
@@ -1584,13 +1570,14 @@ export default function Home() {
           </div>
           <div className="flex shrink-0 items-center gap-2">
             <span className="max-w-[96px] truncate text-xs font-semibold text-black/55">@{user.username}</span>
-            <button
-              type="button"
-              onClick={() => void handleLogout()}
-              className="rounded-lg border border-black/10 bg-white px-2.5 py-1 text-xs font-semibold text-black/60"
+            {/* Log out lives in Settings now (account, password, layout). */}
+            <Link
+              href="/settings"
+              aria-label="Settings"
+              className="flex h-8 w-8 items-center justify-center border border-black/10 bg-white text-black/70 active:scale-[0.96]"
             >
-              Log out
-            </button>
+              <GearIcon className="h-[18px] w-[18px]" />
+            </Link>
           </div>
         </div>
 
@@ -1681,7 +1668,7 @@ export default function Home() {
                                     />
                                   </span>
                                   <span className="shrink-0 font-semibold text-black/50">
-                                    {presentTotal(item.presentSizesQty)}/{itemTargetCount(item)}
+                                    {presentTotal(item.presentSizesQty)}/{itemTargetCount(item, layout)}
                                   </span>
                                   {item.warehouseNote ? (
                                     <span className="min-w-0 flex-1 truncate italic text-black/45">
@@ -1972,11 +1959,7 @@ export default function Home() {
                   On front
                 </p>
                 <div className="mt-2 flex gap-2">
-                  {([
-                    ["No", null],
-                    ["Front 6", 6],
-                    ["Front 8", 8],
-                  ] as const).map(([label, value]) => {
+                  {frontChoices(layout, frontSize).map(([label, value]) => {
                     const active = frontSize === value;
                     return (
                       <button
@@ -2139,7 +2122,7 @@ export default function Home() {
                   <div className="divide-y divide-black/10">
                     {hallListItems.map((item) => {
                           const editing = editingId === item.id;
-                          const editSel = selectableSizesFor(editSystem);
+                          const editSel = selectableSizesFor(editSystem, layout);
                           const editTokens = explodeSizeMap(editPresent, editSel);
                           return (
                             <div key={item.id} className="py-2.5 text-sm">
@@ -2158,7 +2141,7 @@ export default function Home() {
                                 </span>
                                 <div className="flex shrink-0 items-center gap-2">
                                   <span className="text-base font-bold text-accent">
-                                    {presentTotal(item.presentSizesQty)} / {itemTargetCount(item)}
+                                    {presentTotal(item.presentSizesQty)} / {itemTargetCount(item, layout)}
                                   </span>
                                   <IconButton
                                     onClick={() => (editing ? setEditingId(null) : openEdit(item))}
@@ -2257,13 +2240,7 @@ export default function Home() {
                                   <div className="text-[11px] font-semibold uppercase tracking-wide text-black/50">
                                     on front
                                     <div className="mt-1 flex gap-1.5">
-                                      {(
-                                        [
-                                          ["No", null],
-                                          ["Front 6", 6],
-                                          ["Front 8", 8],
-                                        ] as const
-                                      ).map(([label, value]) => {
+                                      {frontChoices(layout, editFrontSize).map(([label, value]) => {
                                         const active = editFrontSize === value;
                                         return (
                                           <button
@@ -2507,7 +2484,7 @@ export default function Home() {
                             </button>
                             <div className="flex shrink-0 items-center gap-2">
                               <span className="text-base font-bold text-accent">
-                                {presentTotal(item.presentSizesQty)}/{itemTargetCount(item)}
+                                {presentTotal(item.presentSizesQty)}/{itemTargetCount(item, layout)}
                               </span>
                               <IconButton
                                 onClick={() => setDeleteTarget(item)}
@@ -2547,7 +2524,7 @@ export default function Home() {
                             </span>
                             <div className="mt-1.5 flex flex-wrap gap-1.5">
                               <SizeTiles map={item.neededSizesQty} variant="need" tileSize="lg" />
-                              {optionalHintSizes(item).map((size) => (
+                              {optionalHintSizes(item, layout).map((size) => (
                                 <span
                                   key={`opt-${size}`}
                                   title={`Optional: bring ${size} if available`}

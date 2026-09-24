@@ -12,7 +12,7 @@ const REPORT_TO = process.env.REPORT_TO || "star00@list.ru";
 async function loadRequestWithItems(id: string) {
   return prisma.replenishmentRequest.findUnique({
     where: { id },
-    include: { items: true },
+    include: { items: true, user: { select: { layout: true } } },
   });
 }
 

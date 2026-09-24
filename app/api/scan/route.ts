@@ -7,9 +7,11 @@ import {
   computeNeededSizes,
   HALL_REQUIRED_SIZES,
   HALL_TARGET_QTY_BY_SIZE,
+  MAX_FRONT_CAPACITY,
   normalizeSizeQty,
 } from "@/lib/replenishment";
 import { prisma } from "@/lib/prisma";
+import { loadUserLayout } from "@/lib/user-layout";
 
 // Run this function in Frankfurt (fra1) - closest to the Supabase DB and to Israel.
 export const preferredRegion = "fra1";
@@ -49,7 +51,7 @@ const scanSchema = z.object({
   sizeSystem: z
     .enum(["letter", "small", "large", "men-letter", "men-small", "men-large", "men-shirt"])
     .optional(),
-  frontSize: z.number().int().nullable().optional(),
+  frontSize: z.number().int().min(1).max(MAX_FRONT_CAPACITY).nullable().optional(),
   warehouseNote: z.string().trim().max(500).optional().default(""),
 });
 
@@ -109,7 +111,8 @@ async function getOrCreateScannedProduct(article: string) {
 }
 
 export async function POST(request: Request) {
-  if (!getSessionUser(request)) {
+  const session = getSessionUser(request);
+  if (!session) {
     return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   }
 
@@ -122,10 +125,12 @@ export async function POST(request: Request) {
 
   const presentSizesQty = normalizeSizeQty(parsed.data.presentSizesQty);
   const product = await getOrCreateScannedProduct(parsed.data.article);
+  // The user's own grids/fronts (Settings -> Customize layout).
+  const layout = await loadUserLayout(session.uid);
   // Target multiset by size: from the size system + front (fronts double sizes
   // up to their capacity), or a flat "one of each" fallback for older clients.
   const targetQtyBySize = parsed.data.sizeSystem
-    ? buildTargetSizes(parsed.data.sizeSystem, parsed.data.frontSize ?? null)
+    ? buildTargetSizes(parsed.data.sizeSystem, parsed.data.frontSize ?? null, layout)
     : Object.fromEntries(
         (parsed.data.orderedSizes?.length
           ? parsed.data.orderedSizes
