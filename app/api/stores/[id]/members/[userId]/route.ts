@@ -11,6 +11,14 @@ type Context = { params: Promise<{ id: string; userId: string }> };
 
 const schema = z.object({ role: z.enum(["MEMBER", "ADMIN"]) });
 
+const LAST_ADMIN_ERROR = "A store needs at least one admin. Make someone else admin first.";
+
+async function isLastAdmin(storeId: string, role: string): Promise<boolean> {
+  if (role !== "ADMIN") return false;
+  const admins = await prisma.storeMember.count({ where: { storeId, role: "ADMIN" } });
+  return admins <= 1;
+}
+
 export async function PATCH(request: Request, context: Context) {
   const session = getSessionUser(request);
   if (!session) {
@@ -29,6 +37,9 @@ export async function PATCH(request: Request, context: Context) {
   });
   if (!member) {
     return NextResponse.json({ error: "Member not found" }, { status: 404 });
+  }
+  if (parsed.data.role === "MEMBER" && (await isLastAdmin(id, member.role))) {
+    return NextResponse.json({ error: LAST_ADMIN_ERROR }, { status: 409 });
   }
   await prisma.storeMember.update({
     where: { userId_storeId: { userId, storeId: id } },
@@ -53,6 +64,9 @@ export async function DELETE(request: Request, context: Context) {
   });
   if (!member) {
     return NextResponse.json({ error: "Member not found" }, { status: 404 });
+  }
+  if (await isLastAdmin(id, member.role)) {
+    return NextResponse.json({ error: LAST_ADMIN_ERROR }, { status: 409 });
   }
   await prisma.storeMember.delete({ where: { userId_storeId: { userId, storeId: id } } });
   await prisma.user.updateMany({ where: { id: userId, activeStoreId: id }, data: { activeStoreId: null } });

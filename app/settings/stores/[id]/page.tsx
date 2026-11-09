@@ -53,6 +53,7 @@ export default function StorePage() {
   const [store, setStore] = useState<StoreDetails | null>(null);
   const [sessions, setSessions] = useState<StoreSession[]>([]);
   const [status, setStatus] = useState<Status>(null);
+  const [peopleStatus, setPeopleStatus] = useState<Status>(null);
   const [busy, setBusy] = useState(false);
   const [origin, setOrigin] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -78,15 +79,19 @@ export default function StorePage() {
     void load();
   }, [load]);
 
-  async function run(action: () => Promise<Response>, done?: string) {
+  async function run(action: () => Promise<Response>, done?: string, report = setStatus) {
     setBusy(true);
-    setStatus(null);
+    report(null);
     const res = await action().catch(() => null);
     if (res?.ok) {
-      if (done) setStatus({ kind: "ok", text: done });
+      if (done) report({ kind: "ok", text: done });
       await load();
     } else {
-      setStatus({ kind: "error", text: "Could not save. Check the connection and retry." });
+      const json = res ? await res.json().catch(() => ({})) : {};
+      report({
+        kind: "error",
+        text: typeof json.error === "string" ? json.error : "Could not save. Check the connection and retry.",
+      });
     }
     setBusy(false);
   }
@@ -98,10 +103,16 @@ export default function StorePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ role }),
       }),
+      undefined,
+      setPeopleStatus,
     );
 
   const removeMember = (member: Member) =>
-    run(() => fetch(`/api/stores/${id}/members/${member.userId}`, { method: "DELETE" }));
+    run(
+      () => fetch(`/api/stores/${id}/members/${member.userId}`, { method: "DELETE" }),
+      undefined,
+      setPeopleStatus,
+    );
 
   const regenerate = () =>
     run(
@@ -208,6 +219,7 @@ export default function StorePage() {
             ))}
           </ul>
         )}
+        <StatusText status={peopleStatus} />
       </Section>
 
       <Section title="Sessions" description="Everyone's sessions in this store. View only.">
