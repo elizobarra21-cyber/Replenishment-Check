@@ -56,11 +56,50 @@ model User {
   /// must never let a Google login land in someone else's account).
   emailVerified Boolean                @default(false)
   googleId      String?                @unique
-  /// Personal size-grid/front layout (Settings -> Customize layout); null =
-  /// built-in defaults. Shape: SizeLayout in lib/replenishment.ts.
+  /// Legacy personal layout, no longer read: rules now belong to the store.
   layout        Json?
   createdAt     DateTime               @default(now())
+  /// Network administrator: creates stores and manages all of them.
+  isNetworkAdmin Boolean               @default(false)
+  /// May choose a store from the list. Accounts from before stores existed and
+  /// anyone who joined through an invite link; new accounts need the link.
+  canPickStore  Boolean                @default(false)
+  defaultStoreId String?
+  /// Where the user works right now (a shift can be in another store).
+  activeStoreId String?
   requests      ReplenishmentRequest[]
+  memberships   StoreMember[]
+}
+
+enum StoreRole {
+  ADMIN
+  MEMBER
+}
+
+model Store {
+  id              String                 @id @default(cuid())
+  name            String                 @unique
+  inviteCode      String                 @unique
+  /// Store rules: size grids and fronts; null = built-in defaults.
+  /// Shape: SizeLayout in lib/replenishment.ts.
+  layout          Json?
+  layoutUpdatedAt DateTime?
+  layoutUpdatedBy String?
+  createdAt       DateTime               @default(now())
+  members         StoreMember[]
+  requests        ReplenishmentRequest[]
+}
+
+model StoreMember {
+  userId   String
+  storeId  String
+  role     StoreRole @default(MEMBER)
+  joinedAt DateTime  @default(now())
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  store    Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
+
+  @@id([userId, storeId])
+  @@index([storeId])
 }
 
 /// Optional feedback on scan quality, collected for OCR debugging.
@@ -84,10 +123,13 @@ model ReplenishmentRequest {
   createdBy String
   userId    String?
   user      User?         @relation(fields: [userId], references: [id])
+  storeId   String?
+  store     Store?        @relation(fields: [storeId], references: [id])
   status    RequestStatus @default(DRAFT)
   items     RequestItem[]
 
   @@index([userId])
+  @@index([storeId])
 }
 
 model RequestItem {
@@ -109,6 +151,9 @@ model RequestItem {
   warehouseNote      String?
   sizeSystem         String?
   frontSize          Int?
+  /// Target (Y in X/Y) when the item was added, so a later change of the store
+  /// rules does not rewrite history. Null on older items.
+  targetTotal        Int?
   createdAt          DateTime             @default(now())
   request            ReplenishmentRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
   product            Product              @relation(fields: [productId], references: [id])

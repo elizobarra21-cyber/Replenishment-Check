@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
+import { getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { requestAccess } from "@/lib/stores";
 
 // Run this function in Frankfurt (fra1) - closest to the Supabase DB and to Israel.
 export const preferredRegion = "fra1";
@@ -38,10 +40,18 @@ function storageGroupName(storageSection: string | null | undefined) {
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ id: string }> },
 ) {
+  const session = getSessionUser(request);
+  if (!session) {
+    return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+  }
+
   const { id } = await context.params;
+  if (!(await requestAccess(session, id))) {
+    return NextResponse.json({ error: "Request not found" }, { status: 404 });
+  }
 
   const requestData = await prisma.replenishmentRequest.findUnique({
     where: { id },

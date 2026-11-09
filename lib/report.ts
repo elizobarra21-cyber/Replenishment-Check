@@ -20,11 +20,11 @@ import {
   type SizeSystem,
 } from "@/lib/replenishment";
 
-// `user.layout` (the owner's personal grids/fronts) is optional: without it
-// targets fall back to the built-in defaults.
+// `store.layout` (the store's grids/fronts) is optional: without it targets fall
+// back to the built-in defaults.
 export type RequestWithItems = ReplenishmentRequest & {
   items: RequestItem[];
-  user?: { layout: unknown } | null;
+  store?: { layout: unknown } | null;
 };
 
 function asMap(value: unknown): SizeQtyMap {
@@ -46,7 +46,7 @@ function itemSizeSystem(item: RequestItem): SizeSystem {
 }
 
 function itemTargetCount(item: RequestItem, layout: SizeLayout | null): number {
-  return targetTotal(buildTargetSizes(itemSizeSystem(item), item.frontSize ?? null, layout));
+  return item.targetTotal ?? targetTotal(buildTargetSizes(itemSizeSystem(item), item.frontSize ?? null, layout));
 }
 
 // "XS S M M L" - repeated tokens like the size tiles in the UI.
@@ -83,7 +83,7 @@ export function reportFilename(data: RequestWithItems): string {
 }
 
 export async function buildRequestReportPdf(data: RequestWithItems): Promise<Uint8Array> {
-  const layout = data.user?.layout ? normalizeLayout(data.user.layout) : null;
+  const layout = data.store?.layout ? normalizeLayout(data.store.layout) : null;
   const items = [...data.items].sort(
     (a, b) =>
       genderRank(a.storageSection) - genderRank(b.storageSection) ||

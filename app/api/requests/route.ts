@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
 import { sweepExpiredLabelPhotos } from "@/lib/photo-cleanup";
 import { prisma } from "@/lib/prisma";
+import { activeStoreIdOf } from "@/lib/stores";
 
 // Run this function in Frankfurt (fra1) - closest to the Supabase DB and to Israel.
 export const preferredRegion = "fra1";
@@ -19,7 +20,7 @@ export async function GET(request: Request) {
   await sweepExpiredLabelPhotos();
 
   const requests = await prisma.replenishmentRequest.findMany({
-    where: { userId: session.uid },
+    where: { userId: session.uid, storeId: await activeStoreIdOf(session.uid) },
     orderBy: { createdAt: "desc" },
     include: {
       _count: { select: { items: true } },
@@ -43,10 +44,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   }
 
+  const storeId = await activeStoreIdOf(session.uid);
+
   // Reuse an empty draft: reopening a finished session leaves the empty one
   // behind, and it must not pile up on every Finish.
   const emptyDraft = await prisma.replenishmentRequest.findFirst({
-    where: { userId: session.uid, status: RequestStatus.DRAFT, items: { none: {} } },
+    where: { userId: session.uid, storeId, status: RequestStatus.DRAFT, items: { none: {} } },
     orderBy: { createdAt: "desc" },
   });
   if (emptyDraft) {
@@ -57,6 +60,7 @@ export async function POST(request: Request) {
     data: {
       createdBy: session.uname,
       userId: session.uid,
+      storeId,
       status: RequestStatus.DRAFT,
     },
   });

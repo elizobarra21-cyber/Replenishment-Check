@@ -12,9 +12,10 @@ import {
   normalizeSizeQty,
   stripLength,
   supportsLength,
+  targetTotal,
 } from "@/lib/replenishment";
 import { prisma } from "@/lib/prisma";
-import { loadUserLayout } from "@/lib/user-layout";
+import { loadStoreLayout, requestAccess } from "@/lib/stores";
 
 // Run this function in Frankfurt (fra1) - closest to the Supabase DB and to Israel.
 export const preferredRegion = "fra1";
@@ -127,10 +128,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
+  const access = await requestAccess(session, parsed.data.requestId);
+  if (!access?.canWrite) {
+    return NextResponse.json({ error: "Request not found" }, { status: 404 });
+  }
+
   const presentSizesQty = stripLength(normalizeSizeQty(parsed.data.presentSizesQty));
   const product = await getOrCreateScannedProduct(parsed.data.article);
-  // The user's own grids/fronts (Settings -> Customize layout).
-  const layout = await loadUserLayout(session.uid);
+  // The rules of the store this session belongs to.
+  const layout = await loadStoreLayout(access.storeId);
   // Target multiset by size: from the size system + front (fronts double sizes
   // up to their capacity), or a flat "one of each" fallback for older clients.
   const targetQtyBySize = parsed.data.sizeSystem
@@ -166,6 +172,7 @@ export async function POST(request: Request) {
       labelPhotoUrl: parsed.data.labelPhotoUrl || null,
       sizeSystem: parsed.data.sizeSystem ?? null,
       frontSize: parsed.data.frontSize ?? null,
+      targetTotal: targetTotal(targetQtyBySize),
       warehouseNote: parsed.data.warehouseNote || null,
       presentSizesQty: applyLength(presentSizesQty, sizeLength),
       neededSizesQty: applyLength(neededSizesQty, sizeLength),

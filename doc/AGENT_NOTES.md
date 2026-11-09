@@ -27,8 +27,8 @@
 - Размерная сетка и размеры в зале - НЕ обязательные поля (пользователь явно отменил обязательность 2026-08-18; для `Add to list` достаточно артикула 5+ цифр). Не возвращать required-валидацию ни на клиенте, ни в `/api/scan`.
 - Выбранные размеры - под плитками, `Suggested sizes` - отдельный блок ниже (как в исходном порядке). Тап по плитке размера вызывает `handlePickSize`: добавляет штуку и делает `scrollIntoView` (`block: "nearest"`, smooth) обертки всего блока размеров `sizesRef` с `scroll-mb-28` (запас над sticky `Add to list`), чтобы плитки + выбранные + suggested были видны целиком. Sticky-панель с размерами у кнопки была и отклонена пользователем - не возвращать.
 - Фото этикеток: `RequestItem.labelPhotoUrl` очищается автоматически через 1 день после Finish (`lib/photo-cleanup.ts`, sweep из `GET /api/requests`, `await` - у Supabase pooled connection limit 1, фоновые запросы конкурируют с основными). `ScanFeedback.labelPhotoUrl` (отладка сканера) не трогается.
-- История сессий (`Your sessions`, раскрытая): ОДНА строка на товар - департамент, артикул, цвет (образец + код), present/need плитками `tileSize="xs"` (без переноса), `X/Y`, заметка с `truncate`; строка с `overflow-hidden whitespace-nowrap`. Ниже кнопки `Download PDF` и `Email to star00@list.ru`. В PDF товар - тоже одна строка (`truncate: true` в `PdfLine`): article, color, `p:`/`n:` токены, `X/Y`, note с обрезкой "...".
-- PDF-отчет: `lib/report.ts` (общий builder) + `lib/pdf.ts` (`pdf-lib` + встроенный DejaVu subset из `lib/fonts/dejavu.ts` - кириллица обязана работать, стандартный Helvetica ее не умеет). `GET /api/requests/[id]/report` - скачивание (Content-Disposition: attachment), `POST` - письмо на `REPORT_TO` (default `star00@list.ru`); без `RESEND_API_KEY` POST честно возвращает `email-not-configured`.
+- История сессий (`Your sessions`, раскрытая): ОДНА строка на товар - департамент, артикул, цвет (образец + код), present/need плитками `tileSize="xs"` (без переноса), `X/Y`, заметка с `truncate`; строка с `overflow-hidden whitespace-nowrap`. Ниже кнопка `Download PDF`. В PDF товар - тоже одна строка (`truncate: true` в `PdfLine`): article, color, `p:`/`n:` токены, `X/Y`, note с обрезкой "...".
+- PDF-отчет: `lib/report.ts` (общий builder) + `lib/pdf.ts` (`pdf-lib` + встроенный DejaVu subset из `lib/fonts/dejavu.ts` - кириллица обязана работать, стандартный Helvetica ее не умеет). `GET /api/requests/[id]/report` - скачивание. Отправка на почту удалена по решению пользователя 2026-11-09: не возвращать.
 - Код этикетки целевой длины - 17 цифр.
 - Сканер читает код только из узкой полосы непосредственно над штрих-кодом; сам баркод, EAN под ним и прочие числа на этикетке не считываются.
 - Палитра расположена вплотную к полю `color`. Выбранный визуальный цвет пишется в `RequestItem.colorName` через `/api/scan` и показывается образцом в Hall-списке и в Warehouse mode. Кодовое значение `color` из этикетки сохраняется отдельно, как раньше.
@@ -47,9 +47,9 @@
 - Аутентификация: основной вход - Google OAuth (`/api/auth/google` + `/api/auth/google/callback`, `lib/google-oauth.ts`; env `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`, опционально `APP_URL`). Логин/пароль - fallback (в т.ч. для локальной разработки), не удалять без явной просьбы. `User.passwordHash` nullable; `email`/`googleId` unique.
 - Мужские сетки (пользовательское решение 2026-08-18): letter/numeric/shirt = 4 базовых, самый маленький размер optional (в цель не входит, на складе предлагается штрихованной подсказкой, если его нет). `men-letter` = `S M L XL` + опц. `XS`; `men-large` = `46 48 50 52` + опц. `44 54`; `men-shirt` = `39 40 41 42` + опц. `38 43` (категория Shirt видна только для Men). `men-small` (джинсы) остался 5 базовых `29..33` + опц. `28 34`. Автоопределение: мужской отдел + EUR 38..43 -> `men-shirt`.
 
-- Персональная раскладка (2026-09-24): `User.layout` (JSON `SizeLayout`: `grids` - только измененные сетки `{mandatory, optional, custom?}`, `fronts` - `[{capacity, name?}]`). Все функции расчета размеров (`buildTargetSizes`, `selectableSizesFor`, `optionalSizesFor`) принимают необязательный `layout` - при добавлении нового места расчета ОБЯЗАТЕЛЬНО передавать раскладку (клиент: state `layout` в `app/page.tsx`; сервер: `loadUserLayout(session.uid)` из `lib/user-layout.ts`, отчет - `request.user.layout`). Без `layout` = встроенные дефолты (`SIZE_CONFIGS`), дефолты не менять без явной просьбы. Любой ввод раскладки прогонять через `normalizeLayout`. Фронт у товара хранится только емкостью (`RequestItem.frontSize`, 1..30); имя - отображение, удаленный из раскладки фронт у старого товара продолжает считаться и показывается в редакторе товара.
-- Ролей/админов пока нет: каждый настраивает раскладку под себя, `/api/account` и `/api/layout` работают только с аккаунтом текущей сессии. Не добавлять доступ к чужим аккаунтам без ролевой модели (план - `doc/MULTI_STORE_PLAN.md`).
-- Проверка владельца пока есть только в `GET`/`PATCH /api/requests/[id]` и `/api/scan/history`. В `warehouse`, `report`, `items/[id]` и `POST /api/scan` ее нет: любой вошедший (а в `warehouse` и аноним) может обратиться к чужой заявке по id. Закрывается первым шагом плана филиалов.
+- Раскладка филиала (2026-11-09): `Store.layout` (JSON `SizeLayout`: `grids` - только измененные сетки `{mandatory, optional, custom?}`, `fronts` - `[{capacity, name?}]`). Все функции расчета размеров принимают необязательный `layout` - при добавлении нового места расчета ОБЯЗАТЕЛЬНО передавать раскладку (клиент: state `layout` в `app/page.tsx`; сервер: `loadStoreLayout(access.storeId)` из `lib/stores.ts` - филиал берется из заявки, а не из текущего филиала пользователя). Без `layout` = встроенные дефолты (`SIZE_CONFIGS`), дефолты не менять без явной просьбы. Любой ввод раскладки прогонять через `normalizeLayout`. Личных настроек раскладки нет (решение пользователя): не возвращать. `User.layout` не читается. Цель Y показывать как `item.targetTotal ?? расчет`.
+- Роли и филиалы: `doc/MULTI_STORE_PLAN.md`. `/api/account` работает только с аккаунтом текущей сессии.
+- Любой новый API с данными заявки обязан проходить через `requestAccess` или `canManageStore` из `lib/stores.ts`; запись - только при `canWrite`. Все запросы к БД в проверках `await` подряд (connection_limit=1).
 - Google-линковка по email - только если `User.emailVerified` (email от Google). Email из Settings всегда `emailVerified=false`. Не ослаблять эту проверку.
 - `Log out` - в Settings (не в шапке); выход обязан вызывать `clearStoredSession()` из `lib/client-storage.ts`.
 
@@ -64,10 +64,10 @@
 - Заявка и восстановление списка: `app/api/requests/route.ts` (создание) и `app/api/requests/[id]/route.ts` (`GET` товары, `PATCH` статус).
 - Отметка товара на складе: `app/api/items/[id]/route.ts` (`PATCH pickStatus`).
 - Warehouse view: `app/api/requests/[id]/warehouse/route.ts`.
-- PDF-отчет: `app/api/requests/[id]/report/route.ts` (GET download / POST email), `lib/report.ts`, `lib/pdf.ts`, `lib/mailer.ts`, шрифты `lib/fonts/`.
+- PDF-отчет: `app/api/requests/[id]/report/route.ts`, `lib/report.ts`, `lib/pdf.ts`, шрифты `lib/fonts/`.
 - Авточистка фото: `lib/photo-cleanup.ts`.
 - Prisma schema: `prisma/schema.prisma`.
-- Настройки: `app/settings/page.tsx` (аккаунт), `app/settings/layout/page.tsx` (раскладка), API `app/api/account/route.ts`, `app/api/layout/route.ts`, `lib/user-layout.ts`.
+- Настройки: `app/settings/page.tsx` (аккаунт), `app/settings/stores/` (филиалы), API `app/api/account/route.ts`, `app/api/stores/`, `app/api/layout/route.ts`, `lib/stores.ts`.
 
 ## Работа с документацией
 
@@ -97,7 +97,7 @@ npm run start -- -p 3010
 
 Открыть на телефоне `Network` URL из вывода Next.js. Телефон должен быть в той же Wi-Fi сети.
 
-Локальный `.env` указывает на прод-базу Supabase. Для проверок с записью в БД лучше поднимать отдельный PGlite в scratchpad (`@electric-sql/pglite-socket`, `pglite-server --db=memory://`) и запускать приложение с `DATABASE_URL`/`DIRECT_URL` на него.
+Локальный `.env` указывает на прод-базу Supabase. Для проверок с записью в БД лучше поднимать отдельный PGlite в scratchpad (`@electric-sql/pglite-socket`, `pglite-server --db=memory://`) и запускать приложение с `DATABASE_URL`/`DIRECT_URL` на него; в строке подключения нужен `pgbouncer=true`, иначе подключения конфликтуют из-за подготовленных запросов.
 
 ## Git hygiene
 

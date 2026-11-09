@@ -1,6 +1,6 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
   ALL_SIZE_SYSTEMS,
@@ -21,10 +21,10 @@ import {
   type SizeLayout,
   type SizeSystem,
 } from "@/lib/replenishment";
-import { CTA, FIELD_LABEL, INPUT, LABEL, SECONDARY, Section, SettingsShell, StatusText } from "../ui";
+import { CTA, FIELD_LABEL, INPUT, LABEL, SECONDARY, Section, SettingsShell, StatusText } from "../../../ui";
 
-// Editable copy of the whole layout: every grid filled in (defaults where the
-// user has no override), plus the fronts list.
+// Editable copy of the store's rules: every grid filled in (defaults where the
+// store has no override), plus the fronts list.
 type Draft = { grids: Record<SizeSystem, GridLayout>; fronts: FrontOption[] };
 type TileState = "main" | "optional" | "off";
 
@@ -119,6 +119,9 @@ function SizeTile({ size, state, onTap }: { size: string; state: TileState; onTa
 
 export default function LayoutEditorPage() {
   const router = useRouter();
+  const { id: storeId } = useParams<{ id: string }>();
+  const backHref = `/settings/stores/${storeId}`;
+  const [storeName, setStoreName] = useState("");
   const [saved, setSaved] = useState<SizeLayout | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [system, setSystem] = useState<SizeSystem>("letter");
@@ -135,20 +138,22 @@ export default function LayoutEditorPage() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch("/api/layout");
-        if (res.status === 401) {
-          router.replace("/");
+        const res = await fetch(`/api/stores/${storeId}`);
+        if (res.status === 401 || res.status === 403) {
+          router.replace("/settings");
           return;
         }
         if (!res.ok) throw new Error();
-        const layout = ((await res.json()).layout ?? null) as SizeLayout | null;
+        const { store } = await res.json();
+        const layout = (store.layout ?? null) as SizeLayout | null;
+        setStoreName(store.name);
         setSaved(layout);
         setDraft(draftFromLayout(layout));
       } catch {
-        setLoadError("Could not load your layout. Check the connection and retry.");
+        setLoadError("Could not load the store rules. Check the connection and retry.");
       }
     })();
-  }, [router]);
+  }, [router, storeId]);
 
   const draftLayout = useMemo(() => (draft ? layoutFromDraft(draft) : null), [draft]);
   const dirty = draft !== null && JSON.stringify(draftLayout) !== JSON.stringify(saved);
@@ -158,7 +163,7 @@ export default function LayoutEditorPage() {
 
   if (!draft) {
     return (
-      <SettingsShell title="Customize layout" backHref="/settings">
+      <SettingsShell title="Store rules" backHref={backHref}>
         <p className="text-sm text-black/50">{loadError || "Loading..."}</p>
       </SettingsShell>
     );
@@ -253,17 +258,17 @@ export default function LayoutEditorPage() {
     setSaving(true);
     setStatus(null);
     try {
-      const res = await fetch("/api/layout", {
-        method: "PUT",
+      const res = await fetch(`/api/stores/${storeId}`, {
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ layout: draftLayout }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(typeof json.error === "string" ? json.error : "Could not save.");
-      const stored = (json.layout ?? null) as SizeLayout | null;
+      const stored = (json.store?.layout ?? null) as SizeLayout | null;
       setSaved(stored);
       setDraft(draftFromLayout(stored));
-      setStatus({ kind: "ok", text: "Layout saved. New items use it right away." });
+      setStatus({ kind: "ok", text: "Saved for the whole store. New items use it right away." });
     } catch (e) {
       setStatus({ kind: "error", text: (e as Error).message });
     } finally {
@@ -281,16 +286,20 @@ export default function LayoutEditorPage() {
 
   return (
     <SettingsShell
-      title="Customize layout"
-      backHref="/settings"
-      backLabel="Settings"
-      onBack={() => (dirty ? setConfirmLeave(true) : router.push("/settings"))}
+      title="Store rules"
+      backHref={backHref}
+      backLabel="Store"
+      onBack={() => (dirty ? setConfirmLeave(true) : router.push(backHref))}
     >
+      <p className="text-sm text-black/60">
+        These rules apply to everyone in {storeName} as soon as you save.
+      </p>
+
       {confirmLeave ? (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-sm border border-black/10 bg-white p-5">
             <p className={LABEL}>Unsaved changes</p>
-            <p className="mt-2 text-sm text-black/60">Leave without saving your layout changes?</p>
+            <p className="mt-2 text-sm text-black/60">Leave without saving the changes to the store rules?</p>
             <div className="mt-4 flex gap-2">
               <button type="button" className={`flex-1 ${SECONDARY} py-3`} onClick={() => setConfirmLeave(false)}>
                 Stay
@@ -298,7 +307,7 @@ export default function LayoutEditorPage() {
               <button
                 type="button"
                 className="flex-1 bg-accent px-3 py-3 text-[12px] font-semibold uppercase tracking-[0.04em] text-white"
-                onClick={() => router.push("/settings")}
+                onClick={() => router.push(backHref)}
               >
                 Discard
               </button>
@@ -539,7 +548,7 @@ export default function LayoutEditorPage() {
           disabled={!dirty || saving || invalidGrids.length > 0}
           className={`mt-2 ${CTA}`}
         >
-          {saving ? "Saving..." : dirty ? "Save layout" : "Saved"}
+          {saving ? "Saving..." : dirty ? "Save for the whole store" : "Saved"}
         </button>
       </div>
     </SettingsShell>

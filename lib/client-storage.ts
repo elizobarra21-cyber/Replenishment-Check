@@ -62,6 +62,27 @@ export function storeMode(mode: "hall" | "warehouse") {
   }
 }
 
+const INVITE_STORAGE_KEY = "store-replenishment:invite";
+
+// The invite code waits here while the user goes through sign-in.
+export function storePendingInvite(code: string) {
+  try {
+    window.localStorage.setItem(INVITE_STORAGE_KEY, code);
+  } catch {
+    // ignore
+  }
+}
+
+export function takePendingInvite(): string {
+  try {
+    const code = window.localStorage.getItem(INVITE_STORAGE_KEY) ?? "";
+    window.localStorage.removeItem(INVITE_STORAGE_KEY);
+    return code;
+  } catch {
+    return "";
+  }
+}
+
 // Signing out forgets the saved list and mode (the next user starts fresh).
 export function clearStoredSession() {
   clearStoredRequestId();

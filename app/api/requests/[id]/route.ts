@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { requestAccess } from "@/lib/stores";
 
 // Run this function in Frankfurt (fra1) - closest to the Supabase DB and to Israel.
 export const preferredRegion = "fra1";
@@ -16,6 +17,11 @@ export async function GET(
   }
 
   const { id } = await context.params;
+
+  // Someone else's session looks the same as a missing one.
+  if (!(await requestAccess(session, id))) {
+    return NextResponse.json({ error: "Request not found" }, { status: 404 });
+  }
 
   const requestData = await prisma.replenishmentRequest.findUnique({
     where: { id },
@@ -34,8 +40,7 @@ export async function GET(
     },
   });
 
-  // Someone else's session looks the same as a missing one.
-  if (!requestData || (requestData.userId && requestData.userId !== session.uid)) {
+  if (!requestData) {
     return NextResponse.json({ error: "Request not found" }, { status: 404 });
   }
 
@@ -63,8 +68,8 @@ export async function PATCH(
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const existing = await prisma.replenishmentRequest.findUnique({ where: { id } });
-  if (!existing || (existing.userId && existing.userId !== session.uid)) {
+  const access = await requestAccess(session, id);
+  if (!access?.canWrite) {
     return NextResponse.json({ error: "Request not found" }, { status: 404 });
   }
 

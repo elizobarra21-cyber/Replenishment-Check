@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 import { clearStoredSession } from "@/lib/client-storage";
-import { frontLabel, frontsFor, type SizeLayout } from "@/lib/replenishment";
 import {
   CTA,
   FIELD_LABEL,
@@ -27,6 +26,15 @@ type Account = {
 
 type Status = { kind: "ok" | "error"; text: string } | null;
 
+type StoreState = {
+  storesExist: boolean;
+  activeStore: { id: string; name: string; canManage: boolean } | null;
+  defaultStoreId: string | null;
+  canPickStore: boolean;
+  isNetworkAdmin: boolean;
+  stores: Array<{ id: string; name: string }>;
+};
+
 async function patchAccount(body: Record<string, string>) {
   const res = await fetch("/api/account", {
     method: "PATCH",
@@ -43,7 +51,8 @@ async function patchAccount(body: Record<string, string>) {
 export default function SettingsPage() {
   const router = useRouter();
   const [account, setAccount] = useState<Account | null>(null);
-  const [layout, setLayout] = useState<SizeLayout | null>(null);
+  const [stores, setStores] = useState<StoreState | null>(null);
+  const [storeStatus, setStoreStatus] = useState<Status>(null);
   const [loadError, setLoadError] = useState("");
 
   const [username, setUsername] = useState("");
@@ -70,8 +79,8 @@ export default function SettingsPage() {
         setAccount(json.account);
         setUsername(json.account.username);
         setEmail(json.account.email ?? "");
-        const lres = await fetch("/api/layout");
-        if (lres.ok) setLayout((await lres.json()).layout ?? null);
+        const sres = await fetch("/api/stores/me");
+        if (sres.ok) setStores(await sres.json());
       } catch {
         setLoadError("Could not load your settings. Check the connection and retry.");
       }
@@ -138,6 +147,22 @@ export default function SettingsPage() {
     }
   }
 
+  async function saveDefaultStore(defaultStoreId: string) {
+    if (!defaultStoreId) return;
+    setStoreStatus(null);
+    const res = await fetch("/api/stores/me", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ defaultStoreId }),
+    }).catch(() => null);
+    if (res?.ok) {
+      setStores(await res.json());
+      setStoreStatus({ kind: "ok", text: "Default store saved." });
+    } else {
+      setStoreStatus({ kind: "error", text: "Could not save. Check the connection and retry." });
+    }
+  }
+
   async function logout() {
     await fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
     clearStoredSession();
@@ -152,8 +177,6 @@ export default function SettingsPage() {
     );
   }
 
-  const customGrids = Object.keys(layout?.grids ?? {}).length;
-  const fronts = frontsFor(layout);
   const passwordType = showPasswords ? "text" : "password";
 
   return (
@@ -304,21 +327,43 @@ export default function SettingsPage() {
         </form>
       </Section>
 
-      <Section
-        title="Hall layout"
-        description="Your own size grids (main / optional sizes) and fronts. They apply only to your account."
-      >
-        <p className="mb-3 text-sm text-black/70">
-          {customGrids
-            ? `${customGrids} grid${customGrids === 1 ? "" : "s"} customized`
-            : "Default size grids"}
-          {" · "}
-          Fronts: {fronts.length ? fronts.map((f) => frontLabel(f.capacity, layout)).join(", ") : "none"}
-        </p>
-        <Link href="/settings/layout" className={`block text-center ${CTA}`}>
-          Customize layout
-        </Link>
-      </Section>
+      {stores?.storesExist || stores?.isNetworkAdmin ? (
+        <Section title="Store">
+          {stores.activeStore ? (
+            <p className="text-sm text-black/70">Working now in {stores.activeStore.name}</p>
+          ) : null}
+          {stores.canPickStore && stores.stores.length ? (
+            <label className={`mt-3 block ${FIELD_LABEL}`}>
+              Default store
+              <select
+                value={stores.defaultStoreId ?? ""}
+                onChange={(e) => void saveDefaultStore(e.target.value)}
+                className={INPUT}
+              >
+                {stores.defaultStoreId ? null : <option value="">Choose a store</option>}
+                {stores.stores.map((store) => (
+                  <option key={store.id} value={store.id}>
+                    {store.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+          <StatusText status={storeStatus} />
+          <div className="mt-3 space-y-2">
+            {stores.activeStore?.canManage ? (
+              <Link href={`/settings/stores/${stores.activeStore.id}`} className={`block text-center ${CTA}`}>
+                Manage {stores.activeStore.name}
+              </Link>
+            ) : null}
+            {stores.isNetworkAdmin ? (
+              <Link href="/settings/stores" className={`block text-center ${SECONDARY} py-3`}>
+                All stores
+              </Link>
+            ) : null}
+          </div>
+        </Section>
+      ) : null}
 
       <section className="border-t border-black/10 pt-6 pb-8">
         <button type="button" onClick={() => void logout()} className={`w-full ${SECONDARY} py-3`}>

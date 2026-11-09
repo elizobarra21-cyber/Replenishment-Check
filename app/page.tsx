@@ -52,6 +52,7 @@ import {
   loadStoredRequestId,
   storeMode,
   storeRequestId,
+  takePendingInvite,
 } from "@/lib/client-storage";
 
 type SizeQtyMap = Record<string, number>;
@@ -78,9 +79,10 @@ function itemSizeSystem(item: RequestItem): SizeSystem {
   return "letter";
 }
 
-// Total expected to hang (Y) for a saved item, per the user's layout.
+// Total expected to hang (Y) for a saved item: fixed when it was added; older
+// items are computed from the store's rules.
 function itemTargetCount(item: RequestItem, layout: SizeLayout | null): number {
-  return targetTotal(buildTargetSizes(itemSizeSystem(item), item.frontSize ?? null, layout));
+  return item.targetTotal ?? targetTotal(buildTargetSizes(itemSizeSystem(item), item.frontSize ?? null, layout));
 }
 
 // Optional (secondary) sizes to suggest in the warehouse for a non-front item:
@@ -102,7 +104,7 @@ function itemNeedOrder(item: RequestItem, layout: SizeLayout | null): string[] {
   return prioritizeSizes(itemSizeSystem(item), Object.keys(item.neededSizesQty ?? {}), layout);
 }
 
-// "On front" choices: No + the user's fronts (Settings -> Customize layout).
+// "On front" choices: No + the store's fronts (Store rules).
 // `keep` adds an item's current front even if it was removed from the layout.
 function frontChoices(
   layout: SizeLayout | null,
@@ -143,10 +145,23 @@ type RequestItem = {
   warehouseNote?: string | null;
   sizeSystem?: string | null;
   frontSize?: number | null;
+  targetTotal?: number | null;
   presentSizesQty: SizeQtyMap;
   neededSizesQty: SizeQtyMap;
   substitutePriority: string[];
   product: Product;
+};
+
+type StoreState = {
+  storesExist: boolean;
+  needsStore: boolean;
+  activeStore: { id: string; name: string; canManage: boolean } | null;
+  defaultStoreId: string | null;
+  canPickStore: boolean;
+  isNetworkAdmin: boolean;
+  stores: Array<{ id: string; name: string }>;
+  // The store could not be loaded (offline): keep working on the saved list.
+  unknown?: boolean;
 };
 
 type SessionSummary = {
@@ -600,21 +615,20 @@ export default function Home() {
   // Set by a tile tap; the effect below scrolls after the re-render commits,
   // so the measurement includes the freshly added token.
   const scrollSizesPending = useRef(false);
-  // Per-session PDF report emailing state (session history panel).
-  const [reportStatus, setReportStatus] = useState<
-    Record<string, "sending" | "sent" | "error" | "not-configured">
-  >({});
   // Front capacity: null = not on a front, otherwise the front's capacity.
   const [frontSize, setFrontSize] = useState<number | null>(null);
-  // The user's personal grids/fronts; null = built-in defaults.
+  // The store's grids/fronts; null = built-in defaults.
+  const [storeState, setStoreState] = useState<StoreState | null>(null);
+  const [showStorePicker, setShowStorePicker] = useState(false);
+  const [storeError, setStoreError] = useState("");
   const [layout, setLayout] = useState<SizeLayout | null>(null);
   // Free-text comment for the current item (shown in both modes).
   const [note, setNote] = useState("");
   // Warehouse: DOM refs per item so marking one can scroll the next into view.
   const itemRefs = useRef<Record<string, HTMLElement | null>>({});
-  // Finish confirmation modal + "send report" choice (report emailing is #5).
+  // Finish confirmation modal + the optional PDF download.
   const [showFinishModal, setShowFinishModal] = useState(false);
-  const [sendReport, setSendReport] = useState(false);
+  const [savePdf, setSavePdf] = useState(false);
   // Inline editing of an already-added item (expanded row).
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editArticle, setEditArticle] = useState("");
@@ -670,7 +684,50 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    // Which store the user is in. An invite link waiting from before sign-in
+    // is used first.
     if (!user) {
+      setStoreState(null);
+      return;
+    }
+    (async () => {
+      try {
+        const code = takePendingInvite();
+        if (code) {
+          const joined = await fetch("/api/stores/join", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ code }),
+          });
+          if (!joined.ok) {
+            const json = await joined.json().catch(() => ({}));
+            setStoreError(errorMessage(json.error, "Could not join the store."));
+          }
+        }
+        const res = await fetch("/api/stores/me");
+        if (!res.ok) throw new Error("store state");
+        setStoreState((await res.json()) as StoreState);
+      } catch {
+        setStoreState({
+          storesExist: false,
+          needsStore: false,
+          activeStore: null,
+          defaultStoreId: null,
+          canPickStore: false,
+          isNetworkAdmin: false,
+          stores: [],
+          unknown: true,
+        });
+      }
+    })();
+  }, [user]);
+
+  const activeStoreId = storeState?.activeStore?.id ?? null;
+  const storeReady = storeState !== null && !storeState.needsStore;
+  const storeUnknown = Boolean(storeState?.unknown);
+
+  useEffect(() => {
+    if (!user || !storeReady) {
       return;
     }
 
@@ -696,8 +753,11 @@ export default function Home() {
       if (storedId) {
         try {
           const res = await fetch(`/api/requests/${storedId}`);
-          if (res.ok) {
-            const json = await res.json();
+          // A list from another store stays there as a draft.
+          const stored = res.ok ? await res.json() : null;
+          const sameStore = storeUnknown || (stored?.request?.storeId ?? null) === activeStoreId;
+          if (res.ok && sameStore) {
+            const json = stored;
             setRequestId(storedId);
             setDraftItems((json.request?.items ?? []) as RequestItem[]);
             // Stay in whichever mode the worker left off in.
@@ -715,13 +775,13 @@ export default function Home() {
             }
             return;
           }
-          if (res.status !== 404) {
+          if (!res.ok && res.status !== 404) {
             // Server reachable but errored - keep the id and reuse it.
             setRequestId(storedId);
             setError("Could not load the saved list. Refresh to retry.");
             return;
           }
-          // 404: the request no longer exists, start a fresh one below.
+          // Missing or from another store: start a fresh one below.
           clearStoredRequestId();
         } catch {
           // Offline / network error - keep the id so adds still target it and
@@ -736,17 +796,17 @@ export default function Home() {
     };
 
     bootstrap().catch(() => setError("Unable to prepare replenishment request."));
-  }, [user]);
+  }, [user, storeReady, activeStoreId, storeUnknown]);
 
   useEffect(() => {
-    // Personal size layout (grids + fronts). Defaults stay in effect until it
-    // loads or if it fails - scanning never waits on it.
-    if (!user) return;
+    // The store's rules (grids + fronts). Defaults stay in effect until they
+    // load or if that fails - scanning never waits on it.
+    if (!user || !storeReady) return;
     fetch("/api/layout")
       .then((res) => (res.ok ? res.json() : null))
       .then((json) => setLayout((json?.layout as SizeLayout | null) ?? null))
       .catch(() => {});
-  }, [user]);
+  }, [user, storeReady, activeStoreId]);
 
   const currentProductNumber = entryStarted ? (lastParsed?.article ?? "") : "";
 
@@ -886,10 +946,10 @@ export default function Home() {
   }
 
   useEffect(() => {
-    if (user) {
+    if (user && storeReady) {
       void loadSessions();
     }
-  }, [user]);
+  }, [user, storeReady, activeStoreId]);
 
   async function submitAuth(event: FormEvent) {
     event.preventDefault();
@@ -1124,18 +1184,17 @@ export default function Home() {
     setPhotoNotice("");
     setBusy(true);
 
+    // Optional PDF: started from the tap itself so the phone allows the download.
+    if (savePdf) {
+      const link = document.createElement("a");
+      link.href = `/api/requests/${requestId}/report`;
+      link.download = "";
+      link.click();
+    }
+
     const finishedId = requestId;
-    const withReport = sendReport;
 
     try {
-      // Optionally email a PDF report of this session before it is closed.
-      if (withReport) {
-        await fetch(`/api/requests/${finishedId}/report`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-        }).catch(() => {});
-      }
-
       // Mark the finished request as done (best effort - the new request is
       // what matters for continued work).
       await fetch(`/api/requests/${finishedId}`, {
@@ -1163,7 +1222,7 @@ export default function Home() {
 
       setDraftItems([]);
       resetEntryForm();
-      setSendReport(false);
+      setSavePdf(false);
     } catch {
       setError("Unable to finish replenishment.");
     } finally {
@@ -1364,21 +1423,34 @@ export default function Home() {
     setDeleteTarget(null);
   }
 
-  // Email the session PDF report to the report inbox (star00@list.ru).
-  async function handleEmailReport(id: string) {
-    setReportStatus((prev) => ({ ...prev, [id]: "sending" }));
+  // Work in another store: its rules apply and its sessions are shown. A list in
+  // progress stays a draft of the store it was started in.
+  async function handleChooseStore(storeId: string) {
+    if (storeId === activeStoreId) {
+      setShowStorePicker(false);
+      return;
+    }
+    setStoreError("");
+    setBusy(true);
     try {
-      const res = await fetch(`/api/requests/${id}/report`, { method: "POST" });
-      const json = await res.json().catch(() => ({}));
-      if (res.ok && json.sent) {
-        setReportStatus((prev) => ({ ...prev, [id]: "sent" }));
-      } else if (json.reason === "email-not-configured") {
-        setReportStatus((prev) => ({ ...prev, [id]: "not-configured" }));
-      } else {
-        setReportStatus((prev) => ({ ...prev, [id]: "error" }));
+      const res = await fetch("/api/stores/active", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ storeId }),
+      });
+      if (!res.ok) throw new Error("store");
+      if (activeStoreId) {
+        setDraftItems([]);
+        resetEntryForm();
+        setShowSessions(false);
+        setExpandedSessionId(null);
       }
+      setStoreState((await res.json()) as StoreState);
+      setShowStorePicker(false);
     } catch {
-      setReportStatus((prev) => ({ ...prev, [id]: "error" }));
+      setStoreError("Could not switch the store. Check connection and retry.");
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -1395,6 +1467,10 @@ export default function Home() {
   }
 
   const dark = mode === "warehouse";
+  const onShift =
+    storeState?.activeStore && storeState.defaultStoreId
+      ? storeState.activeStore.id !== storeState.defaultStoreId
+      : false;
   // Empty drafts are just the next list waiting for its first item.
   const visibleSessions = sessions.filter((s) => s._count.items > 0);
 
@@ -1515,6 +1591,59 @@ export default function Home() {
     );
   }
 
+  if (!storeState) {
+    return (
+      <div className="mx-auto flex min-h-screen w-full max-w-md items-center justify-center p-6 text-sm text-black/50">
+        Loading...
+      </div>
+    );
+  }
+
+  if (storeState.needsStore) {
+    return (
+      <div className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center p-6">
+        <div className="border border-black/10 bg-panel p-6">
+          <h1 className="text-2xl font-bold">
+            {storeState.canPickStore ? "Which store do you work in?" : "Join your store"}
+          </h1>
+          {storeError ? (
+            <div className="mt-3 rounded-lg bg-danger-soft px-3 py-2 text-sm">{storeError}</div>
+          ) : null}
+          {storeState.canPickStore ? (
+            <>
+              <p className="mt-2 text-sm text-black/60">
+                It becomes your default store. You can change it later.
+              </p>
+              <div className="mt-4 space-y-2">
+                {storeState.stores.map((store) => (
+                  <button
+                    key={store.id}
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void handleChooseStore(store.id)}
+                    className="w-full border border-black/15 bg-white px-4 py-4 text-left text-sm font-semibold active:scale-[0.99] disabled:opacity-60"
+                  >
+                    {store.name}
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : (
+            <p className="mt-2 text-sm text-black/60">
+              Open the invite link from your store administrator to start working.
+            </p>
+          )}
+          <Link
+            href="/settings"
+            className="mt-5 block text-center text-xs font-semibold text-black/45 underline underline-offset-2"
+          >
+            Settings
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className={`mx-auto flex min-h-screen w-full max-w-6xl flex-col p-4 transition-colors duration-500 md:p-8 ${
@@ -1548,6 +1677,49 @@ export default function Home() {
               alt={`Scanned label for product ${photoViewer.article}`}
               className="max-h-[75vh] w-full rounded-xl bg-background object-contain"
             />
+          </div>
+        </div>
+      ) : null}
+
+      {showStorePicker ? (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Choose store"
+          onClick={() => !busy && setShowStorePicker(false)}
+        >
+          <div
+            className="max-h-[80vh] w-full max-w-sm overflow-y-auto border border-black/10 bg-white p-5"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2 className="text-lg font-semibold">Choose store</h2>
+            <p className="mt-1 text-sm text-black/60">
+              Your current list stays saved as a draft of its store.
+            </p>
+            {storeError ? (
+              <div className="mt-3 rounded-lg bg-danger-soft px-3 py-2 text-sm">{storeError}</div>
+            ) : null}
+            <div className="mt-4 space-y-2">
+              {storeState.stores.map((store) => (
+                <button
+                  key={store.id}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void handleChooseStore(store.id)}
+                  className={`flex w-full items-center justify-between gap-2 border px-4 py-3.5 text-left text-sm font-semibold active:scale-[0.99] disabled:opacity-60 ${
+                    store.id === activeStoreId
+                      ? "border-accent bg-accent-soft text-accent"
+                      : "border-black/15 bg-white"
+                  }`}
+                >
+                  <span className="min-w-0 truncate">{store.name}</span>
+                  {store.id === storeState.defaultStoreId ? (
+                    <span className="shrink-0 text-xs font-semibold text-black/45">default</span>
+                  ) : null}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       ) : null}
@@ -1611,14 +1783,14 @@ export default function Home() {
             <label className="mt-4 flex items-start gap-2.5 rounded-xl border border-black/10 bg-background p-3">
               <input
                 type="checkbox"
-                checked={sendReport}
-                onChange={(event) => setSendReport(event.target.checked)}
+                checked={savePdf}
+                onChange={(event) => setSavePdf(event.target.checked)}
                 className="mt-0.5 h-4 w-4 accent-[var(--accent,#2563eb)]"
               />
               <span className="text-sm">
-                <span className="font-semibold">Send report</span>
+                <span className="font-semibold">Save PDF</span>
                 <span className="block text-xs text-black/55">
-                  Email a PDF of this session to star00@list.ru
+                  Download a report of this session to your phone
                 </span>
               </span>
             </label>
@@ -1665,6 +1837,21 @@ export default function Home() {
             </Link>
           </div>
         </div>
+
+        {storeState.activeStore ? (
+          <button
+            type="button"
+            disabled={!storeState.canPickStore}
+            onClick={() => setShowStorePicker(true)}
+            className="mt-1.5 flex w-full items-center justify-between gap-2 text-xs font-semibold text-black/70"
+          >
+            <span className="min-w-0 truncate">
+              {storeState.activeStore.name}
+              {onShift ? <span className="text-black/45"> · shift</span> : null}
+            </span>
+            {storeState.canPickStore ? <span className="text-black/45">Change</span> : null}
+          </button>
+        ) : null}
 
         <button
           type="button"
@@ -1783,29 +1970,6 @@ export default function Home() {
                               >
                                 Download PDF
                               </a>
-                              <button
-                                type="button"
-                                disabled={reportStatus[s.id] === "sending"}
-                                onClick={() => void handleEmailReport(s.id)}
-                                className="rounded-lg border border-black/15 bg-white px-2.5 py-1.5 font-semibold text-black/60 active:scale-[0.97] disabled:opacity-50"
-                              >
-                                {reportStatus[s.id] === "sending"
-                                  ? "Sending..."
-                                  : "Email to star00@list.ru"}
-                              </button>
-                              {reportStatus[s.id] === "sent" ? (
-                                <span className="font-semibold text-accent">
-                                  Sent to star00@list.ru
-                                </span>
-                              ) : reportStatus[s.id] === "not-configured" ? (
-                                <span className="text-black/45">
-                                  Email service is not set up yet - use Download PDF.
-                                </span>
-                              ) : reportStatus[s.id] === "error" ? (
-                                <span className="font-semibold text-danger">
-                                  Could not send. Try again.
-                                </span>
-                              ) : null}
                             </div>
                           </>
                         )}

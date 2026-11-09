@@ -12,11 +12,12 @@ import {
   normalizeSizeQty,
   stripLength,
   supportsLength,
+  targetTotal,
   type SizeQtyMap,
   type SizeSystem,
 } from "@/lib/replenishment";
 import { prisma } from "@/lib/prisma";
-import { loadUserLayout } from "@/lib/user-layout";
+import { loadStoreLayout, requestAccess } from "@/lib/stores";
 
 // Run this function in Frankfurt (fra1) - closest to the Supabase DB and to Israel.
 export const preferredRegion = "fra1";
@@ -63,6 +64,10 @@ export async function PATCH(
   if (!existing) {
     return NextResponse.json({ error: "Item not found" }, { status: 404 });
   }
+  const access = await requestAccess(session, existing.requestId);
+  if (!access?.canWrite) {
+    return NextResponse.json({ error: "Item not found" }, { status: 404 });
+  }
 
   const d = parsed.data;
   const data: Prisma.RequestItemUpdateInput = {};
@@ -107,7 +112,7 @@ export async function PATCH(
     );
     const system = (d.sizeSystem ?? existing.sizeSystem ?? "letter") as SizeSystem;
     const front = d.frontSize !== undefined ? d.frontSize : existing.frontSize;
-    const layout = await loadUserLayout(session.uid);
+    const layout = await loadStoreLayout(access.storeId);
     const target = buildTargetSizes(system, front ?? null, layout);
     const orderedSizes = Object.keys(target);
 
@@ -116,6 +121,7 @@ export async function PATCH(
       d.sizeLength !== undefined ? d.sizeLength : lengthOfSizes(storedPresent, storedNeeded);
     const length = supportsLength(system) ? requestedLength : null;
 
+    data.targetTotal = targetTotal(target);
     data.presentSizesQty = applyLength(present, length);
     data.neededSizesQty = applyLength(computeNeededSizes(orderedSizes, target, present), length);
     data.substitutePriority = buildSubstitutePriority(orderedSizes, present);
@@ -141,13 +147,18 @@ export async function DELETE(
   request: Request,
   context: { params: Promise<{ id: string }> },
 ) {
-  if (!getSessionUser(request)) {
+  const session = getSessionUser(request);
+  if (!session) {
     return NextResponse.json({ error: "Not signed in" }, { status: 401 });
   }
 
   const { id } = await context.params;
   const existing = await prisma.requestItem.findUnique({ where: { id } });
   if (!existing) {
+    return NextResponse.json({ error: "Item not found" }, { status: 404 });
+  }
+  const access = await requestAccess(session, existing.requestId);
+  if (!access?.canWrite) {
     return NextResponse.json({ error: "Item not found" }, { status: 404 });
   }
 
