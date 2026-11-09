@@ -401,7 +401,10 @@ export async function readLabelCandidates(file: File): Promise<string[]> {
 
 // Raw size token from the label's EUR line. The caller combines this with the
 // department (men's if it starts with 45) to pick the concrete size system.
-export type SizeDetection = { kind: "letter" } | { kind: "number"; value: number };
+// `length` is set when the line carries a jeans length, e.g. "EUR 29/32".
+export type SizeDetection =
+  | { kind: "letter" }
+  | { kind: "number"; value: number; length?: number };
 
 export type LabelHints = {
   size: SizeDetection | null;
@@ -438,7 +441,10 @@ export async function detectLabelHints(file: File): Promise<LabelHints> {
         for (const raw of numbers) {
           const value = Number(raw);
           if (value >= 20 && value <= 58) {
-            hints.size = { kind: "number", value };
+            const length = rest.match(/\b\d{2}\s*\/\s*(30|32)\b/)?.[1];
+            hints.size = length
+              ? { kind: "number", value, length: Number(length) }
+              : { kind: "number", value };
             break;
           }
         }

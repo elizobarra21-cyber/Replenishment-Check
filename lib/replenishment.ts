@@ -103,13 +103,17 @@ type SizeConfig = {
   optional: string[];
   // Sizes doubled first when filling a front to its capacity.
   doublePref: string[];
+  // Sizes that matter most when not every size can be brought, best first:
+  // listed first in "need", kept longest when a front is trimmed to capacity.
+  priority?: string[];
 };
 
 const SIZE_CONFIGS: Record<SizeSystem, SizeConfig> = {
   letter: {
     mandatory: ["XS", "S", "M", "L", "XL"],
     optional: [],
-    doublePref: ["S", "M", "L"],
+    doublePref: ["M", "S", "L", "XS"],
+    priority: ["M", "S", "L", "XS"],
   },
   small: {
     mandatory: ["25", "26", "27", "28", "29", "30", "31"],
@@ -119,14 +123,16 @@ const SIZE_CONFIGS: Record<SizeSystem, SizeConfig> = {
   large: {
     mandatory: ["34", "36", "38", "40", "42"],
     optional: ["44"],
-    doublePref: ["36", "38", "40", "42", "34", "44"],
+    doublePref: ["38", "40", "36", "42", "34", "44"],
+    priority: ["38", "40", "36"],
   },
   // Men's letter grid: 4 mandatory sizes; XS is optional (suggested in the
   // warehouse only as a "bring if available" hint, never counted in the target).
   "men-letter": {
     mandatory: ["S", "M", "L", "XL"],
     optional: ["XS"],
-    doublePref: ["S", "M", "L"],
+    doublePref: ["L", "XL", "M"],
+    priority: ["L", "XL", "M"],
   },
   "men-small": {
     mandatory: ["29", "30", "31", "32", "33"],
@@ -137,12 +143,13 @@ const SIZE_CONFIGS: Record<SizeSystem, SizeConfig> = {
   "men-large": {
     mandatory: ["46", "48", "50", "52"],
     optional: ["44", "54"],
-    doublePref: ["48", "50", "46", "52", "44", "54"],
+    doublePref: ["48", "50", "52", "46", "44", "54"],
+    priority: ["48", "50", "52"],
   },
-  // Men's shirts (collar sizes).
+  // Men's shirts (collar sizes): 4 mandatory, both ends optional.
   "men-shirt": {
     mandatory: ["39", "40", "41", "42"],
-    optional: ["38"],
+    optional: ["38", "43"],
     doublePref: ["39", "40", "41"],
   },
 };
@@ -264,6 +271,7 @@ function configFor(system: SizeSystem, layout?: SizeLayout | null): SizeConfig {
     mandatory: override.mandatory,
     optional: override.optional.filter((s) => !override.mandatory.includes(s)),
     doublePref,
+    priority: base.priority?.filter((s) => inGrid.includes(s)),
   };
 }
 
@@ -296,6 +304,79 @@ export function orderSizes(sizes: string[]): string[] {
 export function selectableSizesFor(system: SizeSystem, layout?: SizeLayout | null): string[] {
   const cfg = configFor(system, layout);
   return orderSizes([...cfg.mandatory, ...cfg.optional]);
+}
+
+// Natural order of stored size keys: numbers (and jeans "29/32") numerically,
+// letters by the XS..XL scale.
+export function sortSizeKeys(keys: string[]): string[] {
+  const numeric = keys.length > 0 && keys.every((key) => /^\d+(\/\d+)?$/.test(key));
+  if (!numeric) return orderSizes(keys);
+  return [...keys].sort((a, b) => a.localeCompare(b, "en", { numeric: true }));
+}
+
+// Display order for "need": the grid's priority sizes first, best first, then
+// the rest in natural order. Grids without a priority keep the natural order.
+export function prioritizeSizes(
+  system: SizeSystem,
+  sizes: string[],
+  layout?: SizeLayout | null,
+): string[] {
+  const priority = configFor(system, layout).priority ?? [];
+  const rank = (size: string) => {
+    const index = priority.indexOf(splitSizeLength(size).base);
+    return index < 0 ? priority.length : index;
+  };
+  return sortSizeKeys(sizes).sort((a, b) => rank(a) - rank(b));
+}
+
+// --- Men's jeans length (optional sub-size: 29/30, 29/32) --------------------
+
+// Length is chosen per item: an item's sizes are all one length, and a product
+// that hangs in both lengths is added as two items. Stored inside the size keys
+// ("29/32"), so history, warehouse and PDF show it with no extra field.
+export const JEANS_LENGTHS = [30, 32];
+
+export function supportsLength(system: SizeSystem): boolean {
+  return system === "men-small";
+}
+
+export function splitSizeLength(size: string): { base: string; length: number | null } {
+  const match = size.match(/^(\d+)\/(\d+)$/);
+  if (!match || !JEANS_LENGTHS.includes(Number(match[2]))) {
+    return { base: size, length: null };
+  }
+  return { base: match[1], length: Number(match[2]) };
+}
+
+export function withLength(size: string, length: number | null | undefined): string {
+  return length ? `${size}/${length}` : size;
+}
+
+export function applyLength(map: SizeQtyMap, length: number | null | undefined): SizeQtyMap {
+  return Object.fromEntries(
+    Object.entries(map).map(([size, qty]) => [withLength(size, length), qty]),
+  );
+}
+
+// Back to plain sizes; merges duplicates so a bad key can never lose a count.
+export function stripLength(map: SizeQtyMap): SizeQtyMap {
+  const result: SizeQtyMap = {};
+  for (const [size, qty] of Object.entries(map)) {
+    const { base } = splitSizeLength(size);
+    result[base] = (result[base] ?? 0) + qty;
+  }
+  return result;
+}
+
+// The length stored in an item's size keys (present first, then need).
+export function lengthOfSizes(...maps: Array<SizeQtyMap | null | undefined>): number | null {
+  for (const map of maps) {
+    for (const size of Object.keys(map ?? {})) {
+      const { length } = splitSizeLength(size);
+      if (length) return length;
+    }
+  }
+  return null;
 }
 
 // --- Gender / category helpers ----------------------------------------------
@@ -353,7 +434,7 @@ export function resolveSizeSystem(
 // Target multiset (size -> required quantity) for an item.
 // Regular item: one of each mandatory size. Front: a display rack that also
 // includes the optional sizes, filled/trimmed to the front capacity (6 or 8),
-// doubling the preferred sizes.
+// doubling the preferred sizes. Trimming keeps the priority sizes longest.
 export function buildTargetSizes(
   system: SizeSystem,
   frontSize: number | null | undefined,
@@ -373,19 +454,20 @@ export function buildTargetSizes(
   let total = ordered.length;
 
   if (total > frontSize) {
-    // Trim down to capacity (e.g. a front of 6) by dropping the largest sizes.
-    const order = [...ordered].reverse();
-    let i = 0;
-    while (total > frontSize && i < order.length * 4) {
-      const size = order[i % order.length];
-      if ((target[size] ?? 0) > 0) {
-        target[size] -= 1;
-        if (target[size] === 0) {
-          delete target[size];
-        }
-        total -= 1;
-      }
-      i += 1;
+    // Trim down to capacity (e.g. a front of 6). Without a priority: the largest
+    // sizes go first. With one: optional sizes, then other sizes (largest
+    // first), then the priority sizes from the least important.
+    const priority = cfg.priority ?? [];
+    const rest = [...ordered].reverse().filter((size) => !priority.includes(size));
+    const order = [
+      ...rest.filter((size) => priority.length > 0 && cfg.optional.includes(size)),
+      ...rest.filter((size) => priority.length === 0 || !cfg.optional.includes(size)),
+      ...priority.filter((size) => ordered.includes(size)).reverse(),
+    ];
+    for (const size of order) {
+      if (total <= frontSize) break;
+      delete target[size];
+      total -= 1;
     }
     return target;
   }

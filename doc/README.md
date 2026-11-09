@@ -9,6 +9,7 @@
 3. [AGENT_NOTES.md](./AGENT_NOTES.md) - инструкции для Codex, Claude и других AI-агентов.
 4. [CHANGELOG.md](./CHANGELOG.md) - что менялось, когда и почему.
 5. [GITHUB_PUBLISHING.md](./GITHUB_PUBLISHING.md) - подготовка репозитория к публикации.
+6. [MULTI_STORE_PLAN.md](./MULTI_STORE_PLAN.md) - план филиалов, ролей и раскладки филиала.
 
 ## Правило сопровождения
 

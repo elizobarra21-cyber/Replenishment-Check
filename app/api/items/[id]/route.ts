@@ -3,11 +3,16 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionUser } from "@/lib/auth";
 import {
+  applyLength,
   buildSubstitutePriority,
   buildTargetSizes,
   computeNeededSizes,
+  lengthOfSizes,
   MAX_FRONT_CAPACITY,
   normalizeSizeQty,
+  stripLength,
+  supportsLength,
+  type SizeQtyMap,
   type SizeSystem,
 } from "@/lib/replenishment";
 import { prisma } from "@/lib/prisma";
@@ -31,6 +36,7 @@ const updateItemSchema = z.object({
   presentSizesQty: z
     .record(z.string(), z.union([z.number(), z.string()]))
     .optional(),
+  sizeLength: z.union([z.literal(30), z.literal(32)]).nullable().optional(),
 });
 
 export async function PATCH(
@@ -91,20 +97,27 @@ export async function PATCH(
   if (
     d.presentSizesQty !== undefined ||
     d.sizeSystem !== undefined ||
-    d.frontSize !== undefined
+    d.frontSize !== undefined ||
+    d.sizeLength !== undefined
   ) {
-    const present =
-      d.presentSizesQty !== undefined
-        ? normalizeSizeQty(d.presentSizesQty)
-        : ((existing.presentSizesQty as Record<string, number>) ?? {});
+    const storedPresent = (existing.presentSizesQty as SizeQtyMap) ?? {};
+    const storedNeeded = (existing.neededSizesQty as SizeQtyMap) ?? {};
+    const present = stripLength(
+      d.presentSizesQty !== undefined ? normalizeSizeQty(d.presentSizesQty) : storedPresent,
+    );
     const system = (d.sizeSystem ?? existing.sizeSystem ?? "letter") as SizeSystem;
     const front = d.frontSize !== undefined ? d.frontSize : existing.frontSize;
     const layout = await loadUserLayout(session.uid);
     const target = buildTargetSizes(system, front ?? null, layout);
     const orderedSizes = Object.keys(target);
 
-    data.presentSizesQty = present;
-    data.neededSizesQty = computeNeededSizes(orderedSizes, target, present);
+    // Men's jeans length lives in the stored size keys ("29/32").
+    const requestedLength =
+      d.sizeLength !== undefined ? d.sizeLength : lengthOfSizes(storedPresent, storedNeeded);
+    const length = supportsLength(system) ? requestedLength : null;
+
+    data.presentSizesQty = applyLength(present, length);
+    data.neededSizesQty = applyLength(computeNeededSizes(orderedSizes, target, present), length);
     data.substitutePriority = buildSubstitutePriority(orderedSizes, present);
   }
 

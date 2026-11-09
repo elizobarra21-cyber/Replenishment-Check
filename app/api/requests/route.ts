@@ -21,17 +21,36 @@ export async function GET(request: Request) {
   const requests = await prisma.replenishmentRequest.findMany({
     where: { userId: session.uid },
     orderBy: { createdAt: "desc" },
-    include: { _count: { select: { items: true } } },
+    include: {
+      _count: { select: { items: true } },
+      items: { select: { createdAt: true }, orderBy: { createdAt: "asc" }, take: 1 },
+    },
     take: 50,
   });
 
-  return NextResponse.json({ requests });
+  // A session starts with its first item: the request row is created when the
+  // previous session finishes, so createdAt is really that session's end.
+  const sessions = requests
+    .map(({ items, ...rest }) => ({ ...rest, startedAt: items[0]?.createdAt ?? rest.createdAt }))
+    .sort((a, b) => b.startedAt.getTime() - a.startedAt.getTime());
+
+  return NextResponse.json({ requests: sessions });
 }
 
 export async function POST(request: Request) {
   const session = getSessionUser(request);
   if (!session) {
     return NextResponse.json({ error: "Not signed in" }, { status: 401 });
+  }
+
+  // Reuse an empty draft: reopening a finished session leaves the empty one
+  // behind, and it must not pile up on every Finish.
+  const emptyDraft = await prisma.replenishmentRequest.findFirst({
+    where: { userId: session.uid, status: RequestStatus.DRAFT, items: { none: {} } },
+    orderBy: { createdAt: "desc" },
+  });
+  if (emptyDraft) {
+    return NextResponse.json({ request: emptyDraft }, { status: 200 });
   }
 
   const replenishmentRequest = await prisma.replenishmentRequest.create({

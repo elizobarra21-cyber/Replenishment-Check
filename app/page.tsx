@@ -9,19 +9,25 @@ import {
   type ReactNode,
 } from "react";
 import {
-  HALL_REQUIRED_SIZES,
   ALL_SIZE_SYSTEMS,
+  JEANS_LENGTHS,
   buildTargetSizes,
   categoryOf,
   frontLabel,
   frontsFor,
   genderOf,
+  lengthOfSizes,
   optionalSizesFor,
   presentTotal,
+  prioritizeSizes,
   resolveSizeSystem,
   selectableSizesFor,
   sizeSystemFromParts,
+  sortSizeKeys,
+  stripLength,
+  supportsLength,
   targetTotal,
+  withLength,
   type Gender,
   type SizeCategory,
   type SizeLayout,
@@ -49,8 +55,6 @@ import {
 } from "@/lib/client-storage";
 
 type SizeQtyMap = Record<string, number>;
-
-const LETTER_SIZES = HALL_REQUIRED_SIZES;
 
 // Labels for the manual size-grid picker. Shirts exist only on the men's side.
 const CATEGORY_LABELS: Array<{ value: SizeCategory; label: string }> = [
@@ -83,11 +87,19 @@ function itemTargetCount(item: RequestItem, layout: SizeLayout | null): number {
 // the system's optional set, minus anything already present or needed.
 function optionalHintSizes(item: RequestItem, layout: SizeLayout | null): string[] {
   if (item.frontSize) return [];
-  return optionalSizesFor(itemSizeSystem(item), layout).filter(
-    (size) =>
-      !(Number(item.presentSizesQty?.[size]) > 0) &&
-      !(Number(item.neededSizesQty?.[size]) > 0),
-  );
+  const length = lengthOfSizes(item.presentSizesQty, item.neededSizesQty);
+  return optionalSizesFor(itemSizeSystem(item), layout)
+    .map((size) => withLength(size, length))
+    .filter(
+      (size) =>
+        !(Number(item.presentSizesQty?.[size]) > 0) &&
+        !(Number(item.neededSizesQty?.[size]) > 0),
+    );
+}
+
+// "need" sizes of a saved item, the most important first.
+function itemNeedOrder(item: RequestItem, layout: SizeLayout | null): string[] {
+  return prioritizeSizes(itemSizeSystem(item), Object.keys(item.neededSizesQty ?? {}), layout);
 }
 
 // "On front" choices: No + the user's fronts (Settings -> Customize layout).
@@ -104,16 +116,6 @@ function frontChoices(
       .sort((a, b) => a - b)
       .map((capacity) => [frontLabel(capacity, layout), capacity] as [string, number]),
   ];
-}
-
-// Order a size map for display: numeric keys sort numerically, otherwise use the
-// XS..XL order (extra keys are appended by orderedSizeKeys).
-function inferOrderedSizes(map: SizeQtyMap): string[] {
-  const keys = Object.keys(map);
-  if (keys.length > 0 && keys.every((key) => /^\d+$/.test(key))) {
-    return keys.slice().sort((a, b) => Number(a) - Number(b));
-  }
-  return LETTER_SIZES;
 }
 
 type Product = {
@@ -150,6 +152,8 @@ type RequestItem = {
 type SessionSummary = {
   id: string;
   createdAt: string;
+  // When the session really started: its first item.
+  startedAt: string;
   status: string;
   _count: { items: number };
 };
@@ -161,8 +165,22 @@ type WarehouseGroup = {
   items: RequestItem[];
 };
 
+// A past description of a product number (the user's own earlier scans).
+type ScanSuggestion = {
+  id: string;
+  createdAt: string;
+  color: string | null;
+  colorName: string | null;
+  season: string | null;
+  storageSection: string | null;
+  sizeSystem: string | null;
+  frontSize: number | null;
+  warehouseNote: string | null;
+  sizeLength: number | null;
+};
+
+// RequestItem.article / .color hold what the UI calls "product number" / "article".
 type ParsedLabel = {
-  rawLine: string;
   article: string;
   color: string;
   ignoredDigits: string;
@@ -227,7 +245,6 @@ function errorMessage(value: unknown, fallback: string) {
 
 function createEmptyParsedLabel(article = ""): ParsedLabel {
   return {
-    rawLine: article,
     article,
     color: "",
     ignoredDigits: "",
@@ -359,14 +376,17 @@ function SizeTiles({
   map,
   variant,
   tileSize = "sm",
+  order,
 }: {
   map: SizeQtyMap;
   variant: "need" | "present";
+  // Display order; natural size order when omitted.
+  order?: string[];
   // "xs" is a single-line variant (no wrapping) for dense rows like the
   // session history.
   tileSize?: "xs" | "sm" | "lg";
 }) {
-  const tokens = explodeSizeMap(map, inferOrderedSizes(map));
+  const tokens = explodeSizeMap(map, order ?? sortSizeKeys(Object.keys(map)));
   if (!tokens.length) {
     return (
       <span className={`text-black/35 ${tileSize === "xs" ? "text-[10px]" : "text-sm"}`}>
@@ -458,16 +478,37 @@ function SizeGridPicker({
   );
 }
 
-function composeParsedRawLine(parsed: ParsedLabel) {
-  return [
-    parsed.article,
-    parsed.color,
-    parsed.ignoredDigits,
-    parsed.season,
-    parsed.storageSection,
-  ]
-    .filter(Boolean)
-    .join(" ");
+// Optional length of men's jeans (29/30, 29/32); one item is one length.
+function LengthPicker({
+  value,
+  onChange,
+  compact = false,
+}: {
+  value: number | null;
+  onChange: (next: number | null) => void;
+  compact?: boolean;
+}) {
+  return (
+    <div className="flex gap-1.5">
+      {[null, ...JEANS_LENGTHS].map((length) => (
+        <button
+          key={length ?? "none"}
+          type="button"
+          aria-pressed={value === length}
+          onClick={() => onChange(length)}
+          className={`flex-1 rounded-lg border px-2 py-1.5 font-semibold transition-colors active:scale-[0.98] ${
+            compact ? "text-xs" : "text-sm"
+          } ${
+            value === length
+              ? "border-accent bg-accent-soft text-accent"
+              : "border-black/10 bg-white text-black/60"
+          }`}
+        >
+          {length ?? "No length"}
+        </button>
+      ))}
+    </div>
+  );
 }
 
 function readFileAsDataUrl(file: File) {
@@ -540,12 +581,10 @@ export default function Home() {
   const [busy, setBusy] = useState(false);
   const [scanBusy, setScanBusy] = useState(false);
   const [lastParsed, setLastParsed] = useState<ParsedLabel | null>(null);
-  // Frozen OCR result of the current scan (before manual edits), used by the
-  // optional "Rate scan" debugging feedback.
-  const [scanOcr, setScanOcr] = useState<ParsedLabel | null>(null);
-  const [scanRating, setScanRating] = useState<"good" | "bad" | "sending" | null>(null);
+  // The user's past descriptions of the current product number.
+  const [suggestions, setSuggestions] = useState<ScanSuggestion[]>([]);
+  const [appliedSuggestionId, setAppliedSuggestionId] = useState<string | null>(null);
   const [colorValue, setColorValue] = useState("");
-  const [scannedForCurrentItem, setScannedForCurrentItem] = useState(false);
   const [currentLabelPhotoUrl, setCurrentLabelPhotoUrl] = useState<string | null>(null);
   const [photoViewer, setPhotoViewer] = useState<{ article: string; url: string } | null>(null);
   const [photoNotice, setPhotoNotice] = useState("");
@@ -553,6 +592,8 @@ export default function Home() {
   const [entryStarted, setEntryStarted] = useState(false);
   // Size system detected from the label's EUR line.
   const [sizeSystem, setSizeSystem] = useState<SizeSystem>("letter");
+  // Men's jeans length (optional); only used while the grid is men's jeans.
+  const [sizeLength, setSizeLength] = useState<number | null>(null);
   // The whole sizes area (tiles + selected + suggested); a size tap scrolls it
   // fully into view so the selection and suggestions are always visible.
   const sizesRef = useRef<HTMLDivElement | null>(null);
@@ -583,6 +624,7 @@ export default function Home() {
   const [editStorage, setEditStorage] = useState("");
   const [editPresent, setEditPresent] = useState<SizeQtyMap>({});
   const [editSystem, setEditSystem] = useState<SizeSystem>("letter");
+  const [editLength, setEditLength] = useState<number | null>(null);
   const [editFrontSize, setEditFrontSize] = useState<number | null>(null);
   const [editNote, setEditNote] = useState("");
   // Delete confirmation modal (replaces window.confirm, which can hang/behave
@@ -706,6 +748,26 @@ export default function Home() {
       .catch(() => {});
   }, [user]);
 
+  const currentProductNumber = entryStarted ? (lastParsed?.article ?? "") : "";
+
+  useEffect(() => {
+    // Offer the user's past descriptions once a full product number is in.
+    setSuggestions([]);
+    setAppliedSuggestionId(null);
+    if (currentProductNumber.length < 5) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      fetch(`/api/scan/history?article=${currentProductNumber}`, { signal: controller.signal })
+        .then((res) => (res.ok ? res.json() : null))
+        .then((json) => setSuggestions((json?.suggestions ?? []) as ScanSuggestion[]))
+        .catch(() => {});
+    }, 300);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [currentProductNumber]);
+
   useEffect(() => {
     // Remember the current mode so a reload returns to it.
     storeMode(mode);
@@ -742,10 +804,14 @@ export default function Home() {
     [presentSizesQty, selectableSizes],
   );
 
+  // Suggested sizes: the most important first, in case not all can be brought.
   const neededSizeTokens = useMemo(
-    () => explodeSizeMap(neededPreview, selectableSizes),
-    [neededPreview, selectableSizes],
+    () =>
+      explodeSizeMap(neededPreview, prioritizeSizes(sizeSystem, Object.keys(neededPreview), layout)),
+    [neededPreview, sizeSystem, layout],
   );
+
+  const activeLength = supportsLength(sizeSystem) ? sizeLength : null;
 
   const hallPresentCount = presentTotal(presentSizesQty);
   const hallTargetCount = targetTotal(targetSizes);
@@ -777,12 +843,10 @@ export default function Home() {
     value: string,
   ) {
     setLastParsed((prev) => {
-      const next = {
+      return {
         ...(prev ?? createEmptyParsedLabel()),
         [field]: value,
       };
-      next.rawLine = composeParsedRawLine(next);
-      return next;
     });
   }
 
@@ -804,10 +868,10 @@ export default function Home() {
       return;
     }
     setExpandedSessionId(id);
-    if (sessionItems[id]) {
-      return;
+    // Refetch every time: any session can have changed since it was reopened.
+    if (!sessionItems[id]) {
+      setSessionItemsLoading(id);
     }
-    setSessionItemsLoading(id);
     try {
       const res = await fetch(`/api/requests/${id}`);
       const json = await res.json();
@@ -871,11 +935,9 @@ export default function Home() {
     setFrontSize(null);
     setNote("");
     setSizeSystem("letter");
+    setSizeLength(null);
     setLastParsed(null);
-    setScanOcr(null);
-    setScanRating(null);
     setCurrentLabelPhotoUrl(null);
-    setScannedForCurrentItem(false);
     setEditingId(null);
 
     const photoUrlPromise = createLabelPhotoUrl(file).catch(() => "");
@@ -904,7 +966,6 @@ export default function Home() {
 
       if (!extracted?.parsed && !extracted?.article) {
         setCurrentLabelPhotoUrl(null);
-        setScannedForCurrentItem(false);
         setError("Could not find the label code above barcode. Try another angle.");
         return;
       }
@@ -915,26 +976,18 @@ export default function Home() {
       const hints = await hintsPromise;
       const dept = extracted.parsed?.storageSection ?? "";
       setSizeSystem(resolveSizeSystem(hints?.size ?? null, dept) ?? "letter");
+      if (hints?.size?.kind === "number" && hints.size.length) {
+        setSizeLength(hints.size.length);
+      }
       if (hints?.color) {
         setColorValue(hints.color);
       }
 
       const photoUrl = await photoUrlPromise;
       setCurrentLabelPhotoUrl(photoUrl || null);
-      const parsedLabel = extracted.parsed
-        ? {
-            ...extracted.parsed,
-            rawLine: composeParsedRawLine(extracted.parsed),
-          }
-        : createEmptyParsedLabel(String(extracted.article));
-      setLastParsed(parsedLabel);
-      // Keep the raw OCR result (before any manual fixes) for "Rate scan".
-      setScanOcr(parsedLabel);
-      setScanRating(null);
-      setScannedForCurrentItem(true);
+      setLastParsed(extracted.parsed ?? createEmptyParsedLabel(String(extracted.article)));
     } catch {
       setCurrentLabelPhotoUrl(null);
-      setScannedForCurrentItem(false);
       setError("Scan failed. Please retry with clearer photo and light.");
     } finally {
       setScanBusy(false);
@@ -945,50 +998,39 @@ export default function Home() {
     setError("");
     setPhotoNotice("");
     setSizeSystem("letter");
+    setSizeLength(null);
     setFrontSize(null);
     setNote("");
     setCurrentLabelPhotoUrl(null);
-    setScannedForCurrentItem(false);
-    setScanOcr(null);
-    setScanRating(null);
     setLastParsed(createEmptyParsedLabel());
     setEntryStarted(true);
   }
 
-  // Optional OCR-debugging feedback: stores what the scanner read alongside the
-  // photo so misrecognized digits can be investigated later.
-  async function handleRateScan(rating: "good" | "bad") {
-    if (!scanOcr || scanRating === "sending") {
-      return;
+  // Fill the form from a past description. Codes read from this label win over
+  // old ones; the note, color and grid come from the past scan.
+  function applySuggestion(suggestion: ScanSuggestion) {
+    setAppliedSuggestionId(suggestion.id);
+    setLastParsed((prev) => {
+      const current = prev ?? createEmptyParsedLabel();
+      return {
+        ...current,
+        color: current.color || suggestion.color || "",
+        season: current.season || suggestion.season || "",
+        storageSection: current.storageSection || suggestion.storageSection || "",
+      };
+    });
+    if (suggestion.colorName) setColorValue(suggestion.colorName);
+    if (suggestion.warehouseNote) setNote(suggestion.warehouseNote);
+    if (suggestion.sizeSystem && ALL_SIZE_SYSTEMS.includes(suggestion.sizeSystem as SizeSystem)) {
+      setSizeSystem(suggestion.sizeSystem as SizeSystem);
     }
-    setScanRating("sending");
-    try {
-      const res = await fetch("/api/scan-feedback", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          rating,
-          ocrLine: scanOcr.rawLine,
-          article: scanOcr.article,
-          color: scanOcr.color,
-          season: scanOcr.season,
-          storageSection: scanOcr.storageSection,
-          labelPhotoUrl: currentLabelPhotoUrl ?? "",
-        }),
-      });
-      if (!res.ok) {
-        throw new Error("feedback failed");
-      }
-      setScanRating(rating);
-    } catch {
-      setScanRating(null);
-      setError("Could not send scan feedback. Check connection and retry.");
-    }
+    setFrontSize(suggestion.frontSize);
+    setSizeLength(suggestion.sizeLength);
   }
 
   async function handleAddItem() {
     if (!requestId || !lastParsed?.article) {
-      setError("Scan the code or enter article before adding to warehouse list.");
+      setError("Scan the code or enter the product number before adding to warehouse list.");
       return;
     }
 
@@ -1012,6 +1054,7 @@ export default function Home() {
           orderedSizes: selectableSizes,
           sizeSystem,
           frontSize,
+          sizeLength: activeLength,
           warehouseNote: note,
         }),
       });
@@ -1024,15 +1067,13 @@ export default function Home() {
       }
 
       setDraftItems((prev) => [...prev, json.item as RequestItem]);
-      setScannedForCurrentItem(false);
-      setScanOcr(null);
-      setScanRating(null);
       setLastParsed(null);
       setColorValue("");
       setCurrentLabelPhotoUrl(null);
       setPresentSizesQty({});
       setEntryStarted(false);
       setSizeSystem("letter");
+      setSizeLength(null);
       setFrontSize(null);
       setNote("");
 
@@ -1121,22 +1162,61 @@ export default function Home() {
       setRequestId(json.request.id);
 
       setDraftItems([]);
-      setWarehouseGroups([]);
-      setPresentSizesQty({});
-      setLastParsed(null);
-      setScanOcr(null);
-      setScanRating(null);
-      setColorValue("");
-      setCurrentLabelPhotoUrl(null);
-      setScannedForCurrentItem(false);
-      setEntryStarted(false);
-      setSizeSystem("letter");
-      setFrontSize(null);
-      setNote("");
+      resetEntryForm();
       setSendReport(false);
-      setMode("hall");
     } catch {
       setError("Unable to finish replenishment.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function resetEntryForm() {
+    setWarehouseGroups([]);
+    setPresentSizesQty({});
+    setLastParsed(null);
+    setColorValue("");
+    setCurrentLabelPhotoUrl(null);
+    setEntryStarted(false);
+    setSizeSystem("letter");
+    setSizeLength(null);
+    setFrontSize(null);
+    setNote("");
+    setEditingId(null);
+    setMode("hall");
+  }
+
+  // Make a past session the working list again. A finished one goes back to
+  // draft; the list in progress stays a draft too and can be opened the same way.
+  async function handleOpenSession(session: SessionSummary) {
+    setError("");
+    setPhotoNotice("");
+    setBusy(true);
+    try {
+      if (session.status !== "DRAFT") {
+        const patch = await fetch(`/api/requests/${session.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "DRAFT" }),
+        });
+        if (!patch.ok) {
+          throw new Error("Unable to reopen");
+        }
+      }
+      const res = await fetch(`/api/requests/${session.id}`);
+      const json = await res.json();
+      if (!res.ok) {
+        throw new Error("Unable to load");
+      }
+      storeRequestId(session.id);
+      setRequestId(session.id);
+      setDraftItems((json.request?.items ?? []) as RequestItem[]);
+      resetEntryForm();
+      setShowSessions(false);
+      setExpandedSessionId(null);
+      void loadSessions();
+    } catch {
+      setError("Could not reopen the session. Check connection and retry.");
     } finally {
       setBusy(false);
     }
@@ -1200,13 +1280,14 @@ export default function Home() {
 
   function openEdit(item: RequestItem) {
     setError("");
+    setEditLength(lengthOfSizes(item.presentSizesQty, item.neededSizesQty));
     setEditingId(item.id);
     setEditArticle(item.article ?? "");
     setEditColor(item.color ?? "");
     setEditColorName(item.colorName ?? "");
     setEditSeason(item.season ?? "");
     setEditStorage(item.storageSection ?? "");
-    setEditPresent({ ...(item.presentSizesQty ?? {}) });
+    setEditPresent(stripLength(item.presentSizesQty ?? {}));
     setEditSystem(itemSizeSystem(item));
     setEditFrontSize(item.frontSize ?? null);
     setEditNote(item.warehouseNote ?? "");
@@ -1228,6 +1309,7 @@ export default function Home() {
           presentSizesQty: editPresent,
           sizeSystem: editSystem,
           frontSize: editFrontSize,
+          sizeLength: supportsLength(editSystem) ? editLength : null,
           warehouseNote: editNote,
         }),
       });
@@ -1305,7 +1387,7 @@ export default function Home() {
 
     if (!item.labelPhotoUrl) {
       setPhotoViewer(null);
-      setPhotoNotice(`No scan photo saved for article ${item.article}.`);
+      setPhotoNotice(`No scan photo saved for product ${item.article}.`);
       return;
     }
 
@@ -1313,6 +1395,8 @@ export default function Home() {
   }
 
   const dark = mode === "warehouse";
+  // Empty drafts are just the next list waiting for its first item.
+  const visibleSessions = sessions.filter((s) => s._count.items > 0);
 
   if (!authChecked) {
     return (
@@ -1442,7 +1526,7 @@ export default function Home() {
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4"
           role="dialog"
           aria-modal="true"
-          aria-label={`Scan photo for article ${photoViewer.article}`}
+          aria-label={`Scan photo for product ${photoViewer.article}`}
           onClick={() => setPhotoViewer(null)}
         >
           <div
@@ -1461,7 +1545,7 @@ export default function Home() {
             </div>
             <img
               src={photoViewer.url}
-              alt={`Scanned label for article ${photoViewer.article}`}
+              alt={`Scanned label for product ${photoViewer.article}`}
               className="max-h-[75vh] w-full rounded-xl bg-background object-contain"
             />
           </div>
@@ -1520,7 +1604,8 @@ export default function Home() {
           >
             <h2 className="text-lg font-semibold">Finish replenishment?</h2>
             <p className="mt-1 text-sm text-black/60">
-              This closes the current session and clears the list. This cannot be undone.
+              This closes the current session and clears the list. You can reopen it from
+              Your sessions.
             </p>
 
             <label className="mt-4 flex items-start gap-2.5 rounded-xl border border-black/10 bg-background p-3">
@@ -1589,15 +1674,15 @@ export default function Home() {
           }}
           className="mt-1.5 flex w-full items-center justify-between text-xs font-semibold text-black/45"
         >
-          <span>Your sessions ({sessions.length})</span>
+          <span>Your sessions ({visibleSessions.length})</span>
           <span>{showSessions ? "Hide" : "Show"}</span>
         </button>
         {showSessions ? (
-          sessions.length === 0 ? (
+          visibleSessions.length === 0 ? (
             <p className="mt-1.5 text-xs text-black/45">No past sessions yet.</p>
           ) : (
             <ul className="mt-1.5 divide-y divide-black/5 border-t border-black/5">
-              {sessions.map((s) => {
+              {visibleSessions.map((s) => {
                 const expanded = expandedSessionId === s.id;
                 const items = sessionItems[s.id];
                 const loading = sessionItemsLoading === s.id;
@@ -1609,7 +1694,7 @@ export default function Home() {
                       className="flex w-full items-center justify-between gap-2 text-left"
                     >
                       <span className="text-black/60">
-                        {new Date(s.createdAt).toLocaleString()}
+                        {new Date(s.startedAt).toLocaleString()}
                       </span>
                       <span className="flex shrink-0 items-center gap-2">
                         <span className="text-black/45">{s._count.items} items</span>
@@ -1620,7 +1705,7 @@ export default function Home() {
                               : "bg-background text-black/50"
                           }`}
                         >
-                          {s.status.toLowerCase()}
+                          {s.id === requestId ? "current" : s.status.toLowerCase()}
                         </span>
                         <span className="text-black/30">{expanded ? "▲" : "▼"}</span>
                       </span>
@@ -1633,8 +1718,8 @@ export default function Home() {
                           <p className="text-black/40">No items.</p>
                         ) : (
                           <>
-                            {/* One line per item: department - article - color -
-                                present - need - hall X/Y - note (truncated). */}
+                            {/* One line per item: department - product number -
+                                article - present - need - hall X/Y - note (truncated). */}
                             <ul className="space-y-1.5">
                               {items.map((item) => (
                                 <li
@@ -1665,6 +1750,7 @@ export default function Home() {
                                       map={item.neededSizesQty}
                                       variant="need"
                                       tileSize="xs"
+                                      order={itemNeedOrder(item, layout)}
                                     />
                                   </span>
                                   <span className="shrink-0 font-semibold text-black/50">
@@ -1680,6 +1766,16 @@ export default function Home() {
                             </ul>
 
                             <div className="mt-2.5 flex flex-wrap items-center gap-2 border-t border-black/5 pt-2">
+                              {s.id !== requestId ? (
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() => void handleOpenSession(s)}
+                                  className="rounded-lg border border-accent bg-white px-2.5 py-1.5 font-semibold text-accent active:scale-[0.97] disabled:opacity-50"
+                                >
+                                  {s.status === "DONE" ? "Reopen" : "Open"}
+                                </button>
+                              ) : null}
                               <a
                                 href={`/api/requests/${s.id}/report`}
                                 download
@@ -1790,17 +1886,9 @@ export default function Home() {
               {entryStarted ? (
                 <>
               <div className="mt-4 border-t border-black/10 pt-4">
-                <p className="text-[13px] font-semibold uppercase tracking-[0.04em] text-black">
-                  Last parsed code
-                </p>
-                {lastParsed?.rawLine ? (
-                  <p className="mt-1 text-sm font-semibold text-accent">
-                    {lastParsed.rawLine}
-                  </p>
-                ) : null}
-                <div className="mt-3 space-y-2">
+                <div className="space-y-2">
                   <label className="block text-[13px] font-semibold uppercase tracking-[0.04em] text-black">
-                    <span>article</span>
+                    <span>product number</span>
                     <input
                       value={parsedForFields.article}
                       inputMode="numeric"
@@ -1815,13 +1903,51 @@ export default function Home() {
                     />
                   </label>
 
+                  {suggestions.length ? (
+                    <div className="border border-black/10 bg-white p-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-black/50">
+                        Past descriptions
+                      </p>
+                      <ul className="mt-1 space-y-1">
+                        {suggestions.map((suggestion) => (
+                          <li key={suggestion.id}>
+                            <button
+                              type="button"
+                              onClick={() => applySuggestion(suggestion)}
+                              className={`flex w-full items-center gap-2 overflow-hidden whitespace-nowrap border px-2 py-2 text-left text-sm active:scale-[0.99] ${
+                                appliedSuggestionId === suggestion.id
+                                  ? "border-accent bg-accent-soft"
+                                  : "border-black/10 bg-white"
+                              }`}
+                            >
+                              {suggestion.colorName ? (
+                                <ColorSwatch value={suggestion.colorName} size={14} />
+                              ) : null}
+                              {suggestion.color ? (
+                                <span className="shrink-0 font-semibold text-black/70">
+                                  {suggestion.color}
+                                </span>
+                              ) : null}
+                              <span className="min-w-0 flex-1 truncate italic text-black/55">
+                                {suggestion.warehouseNote}
+                              </span>
+                              <span className="shrink-0 text-[11px] text-black/40">
+                                {new Date(suggestion.createdAt).toLocaleDateString()}
+                              </span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+
                   <div className="text-[13px] font-semibold uppercase tracking-[0.04em] text-black">
-                    <span>color</span>
+                    <span>article</span>
                     <div className="mt-1 flex flex-wrap items-center gap-1.5">
                       <input
                         value={parsedForFields.color}
                         inputMode="numeric"
-                        aria-label="color code"
+                        aria-label="article code"
                         onChange={(event) =>
                           updateParsedField(
                             "color",
@@ -1921,37 +2047,6 @@ export default function Home() {
                   </div>
                 </div>
 
-                {scannedForCurrentItem && scanOcr ? (
-                  <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-dashed border-black/15 bg-white px-3 py-2">
-                    <span className="text-xs font-semibold uppercase tracking-wide text-black/45">
-                      Rate scan
-                    </span>
-                    {scanRating === "good" || scanRating === "bad" ? (
-                      <span className="text-xs font-semibold text-black/50">
-                        {scanRating === "good" ? "Marked as correct" : "Marked as wrong"}. Thanks!
-                      </span>
-                    ) : (
-                      <span className="flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          disabled={scanRating === "sending"}
-                          onClick={() => void handleRateScan("good")}
-                          className="rounded-lg border border-black/15 bg-white px-2.5 py-1.5 text-xs font-semibold text-black/60 active:scale-[0.97] disabled:opacity-50"
-                        >
-                          👍 Correct
-                        </button>
-                        <button
-                          type="button"
-                          disabled={scanRating === "sending"}
-                          onClick={() => void handleRateScan("bad")}
-                          className="rounded-lg border border-danger/40 bg-white px-2.5 py-1.5 text-xs font-semibold text-danger active:scale-[0.97] disabled:opacity-50"
-                        >
-                          👎 Wrong digits
-                        </button>
-                      </span>
-                    )}
-                  </div>
-                ) : null}
               </div>
 
               <div className="mt-4 border-t border-black/10 pt-4">
@@ -1986,6 +2081,16 @@ export default function Home() {
                 <div className="mt-2">
                   <SizeGridPicker system={sizeSystem} onChange={setSizeSystem} />
                 </div>
+                {supportsLength(sizeSystem) ? (
+                  <div className="mt-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-black/50">
+                      Length (optional)
+                    </p>
+                    <div className="mt-1.5">
+                      <LengthPicker value={sizeLength} onChange={setSizeLength} />
+                    </div>
+                  </div>
+                ) : null}
               </div>
 
               {/* The whole sizes area shares one ref: tapping a size scrolls
@@ -2013,7 +2118,9 @@ export default function Home() {
                       onClick={() => handlePickSize(size)}
                       className="min-h-14 rounded-xl border border-black/15 bg-white px-3 py-3 text-center transition-colors active:scale-[0.97]"
                     >
-                      <span className="text-sm font-normal text-black">{size}</span>
+                      <span className="text-sm font-normal text-black">
+                        {withLength(size, activeLength)}
+                      </span>
                     </button>
                   ))}
                 </div>
@@ -2033,7 +2140,7 @@ export default function Home() {
                         className="rounded-md border border-black/10 bg-white px-2.5 py-1.5 text-sm font-semibold active:scale-[0.97]"
                         title="Remove one"
                       >
-                        {token}
+                        {withLength(token, activeLength)}
                       </button>
                     ))
                   ) : (
@@ -2053,7 +2160,7 @@ export default function Home() {
                         key={`need-${token}-${index}`}
                         className="rounded-md bg-accent-soft px-2.5 py-1.5 text-sm font-semibold text-accent"
                       >
-                        {token}
+                        {withLength(token, activeLength)}
                       </span>
                     ))
                   ) : (
@@ -2166,7 +2273,7 @@ export default function Home() {
                                 <div className="mt-2 space-y-2">
                                   <div className="grid grid-cols-3 gap-2">
                                     <label className="text-[11px] font-semibold uppercase tracking-wide text-black/50">
-                                      article
+                                      product no.
                                       <input
                                         value={editArticle}
                                         inputMode="numeric"
@@ -2198,13 +2305,13 @@ export default function Home() {
                                   </div>
 
                                   <div className="text-[11px] font-semibold uppercase tracking-wide text-black/50">
-                                    color
+                                    article
                                     <div className="mt-1 flex flex-wrap items-center gap-1.5">
                                       <input
                                         value={editColor}
                                         inputMode="numeric"
                                         maxLength={3}
-                                        aria-label="color code"
+                                        aria-label="article code"
                                         onChange={(e) => setEditColor(e.target.value.replace(/\D/g, "").slice(0, 3))}
                                         className="w-14 rounded-lg border border-black/10 bg-white px-3 py-[11px] text-base font-semibold outline-none focus:border-accent"
                                       />
@@ -2269,6 +2376,15 @@ export default function Home() {
                                         compact
                                       />
                                     </div>
+                                    {supportsLength(editSystem) ? (
+                                      <div className="mt-1.5">
+                                        <LengthPicker
+                                          value={editLength}
+                                          onChange={setEditLength}
+                                          compact
+                                        />
+                                      </div>
+                                    ) : null}
                                   </div>
 
                                   <div className="text-[11px] font-semibold uppercase tracking-wide text-black/50">
@@ -2287,7 +2403,7 @@ export default function Home() {
                                           }
                                           className="min-h-10 rounded-lg border border-black/15 bg-background px-1 py-1.5 text-center text-xs font-semibold text-black/70 active:scale-[0.97]"
                                         >
-                                          {size}
+                                          {withLength(size, supportsLength(editSystem) ? editLength : null)}
                                         </button>
                                       ))}
                                     </div>
@@ -2306,7 +2422,7 @@ export default function Home() {
                                             }
                                             className="rounded-md bg-white px-2 py-1 text-xs font-semibold active:scale-[0.97]"
                                           >
-                                            {token}
+                                            {withLength(token, supportsLength(editSystem) ? editLength : null)}
                                           </button>
                                         ))
                                       ) : (
@@ -2376,7 +2492,8 @@ export default function Home() {
             <div className="mb-4">
               <h2 className="text-xl font-semibold">Warehouse mode</h2>
               <p className="mt-1 text-sm text-black/60">
-                Men first, then women. Grouped by department, sorted by article, color.
+                Men first, then women. Grouped by department, sorted by product number, article.
+                Sizes in &quot;need&quot; go from the most important.
               </p>
               <button
                 type="button"
@@ -2502,7 +2619,7 @@ export default function Home() {
                                 title={
                                   item.colorName
                                     ? resolveColor(item.colorName).label
-                                    : `color ${item.color ?? ""} (shade unknown)`
+                                    : `article ${item.color ?? ""} (shade unknown)`
                                 }
                                 style={{
                                   background: item.colorName
@@ -2523,7 +2640,12 @@ export default function Home() {
                               need
                             </span>
                             <div className="mt-1.5 flex flex-wrap gap-1.5">
-                              <SizeTiles map={item.neededSizesQty} variant="need" tileSize="lg" />
+                              <SizeTiles
+                                map={item.neededSizesQty}
+                                variant="need"
+                                tileSize="lg"
+                                order={itemNeedOrder(item, layout)}
+                              />
                               {optionalHintSizes(item, layout).map((size) => (
                                 <span
                                   key={`opt-${size}`}

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionUser } from "@/lib/auth";
 import {
+  applyLength,
   buildSubstitutePriority,
   buildTargetSizes,
   computeNeededSizes,
@@ -9,6 +10,8 @@ import {
   HALL_TARGET_QTY_BY_SIZE,
   MAX_FRONT_CAPACITY,
   normalizeSizeQty,
+  stripLength,
+  supportsLength,
 } from "@/lib/replenishment";
 import { prisma } from "@/lib/prisma";
 import { loadUserLayout } from "@/lib/user-layout";
@@ -35,7 +38,7 @@ function isPhotoReference(value: string) {
 
 const scanSchema = z.object({
   requestId: z.string().min(1),
-  article: z.string().regex(/^\d{5,10}$/, "Article must be 5-10 digits"),
+  article: z.string().regex(/^\d{5,10}$/, "Product number must be 5-10 digits"),
   color: z.string().trim().max(32).optional().default(""),
   colorName: z.string().trim().max(32).optional().default(""),
   season: z.string().trim().max(32).optional().default(""),
@@ -53,6 +56,7 @@ const scanSchema = z.object({
     .optional(),
   frontSize: z.number().int().min(1).max(MAX_FRONT_CAPACITY).nullable().optional(),
   warehouseNote: z.string().trim().max(500).optional().default(""),
+  sizeLength: z.union([z.literal(30), z.literal(32)]).nullable().optional(),
 });
 
 async function ensureHallSizeSystem() {
@@ -123,7 +127,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
   }
 
-  const presentSizesQty = normalizeSizeQty(parsed.data.presentSizesQty);
+  const presentSizesQty = stripLength(normalizeSizeQty(parsed.data.presentSizesQty));
   const product = await getOrCreateScannedProduct(parsed.data.article);
   // The user's own grids/fronts (Settings -> Customize layout).
   const layout = await loadUserLayout(session.uid);
@@ -144,6 +148,11 @@ export async function POST(request: Request) {
     presentSizesQty,
   );
   const substitutePriority = buildSubstitutePriority(orderedSizes, presentSizesQty);
+  // Men's jeans length lives in the stored size keys ("29/32").
+  const sizeLength =
+    parsed.data.sizeSystem && supportsLength(parsed.data.sizeSystem)
+      ? (parsed.data.sizeLength ?? null)
+      : null;
 
   const requestItem = await prisma.requestItem.create({
     data: {
@@ -158,8 +167,8 @@ export async function POST(request: Request) {
       sizeSystem: parsed.data.sizeSystem ?? null,
       frontSize: parsed.data.frontSize ?? null,
       warehouseNote: parsed.data.warehouseNote || null,
-      presentSizesQty,
-      neededSizesQty,
+      presentSizesQty: applyLength(presentSizesQty, sizeLength),
+      neededSizesQty: applyLength(neededSizesQty, sizeLength),
       substitutePriority,
     },
     include: {

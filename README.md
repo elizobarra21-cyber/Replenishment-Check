@@ -18,7 +18,7 @@ The app helps a hall worker scan a product label, mark sizes already present in 
 The hall worker scans the 17-digit code above the barcode. The code is parsed as:
 
 ```text
-article color skip season storage
+product-number article skip season storage
 4829101 123 45 6 7890
 ```
 
@@ -30,7 +30,7 @@ XS S M L XL
 
 `Suggested sizes` are the missing sizes from that fixed set.
 
-There is no product catalog or warehouse stock database. After a scan or manual article entry, `Add to list` saves the item into a smart warehouse list built from the label data and selected hall sizes.
+There is no product catalog or warehouse stock database. After a scan or manual product number entry, `Add to list` saves the item into a smart warehouse list built from the label data and selected hall sizes.
 
 ## Documentation
 

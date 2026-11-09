@@ -1,7 +1,8 @@
 // Shared builder for the session report PDF: used by the report route both to
 // download the file (GET) and to email it (POST). Per-item fields mirror the
-// scan history: department - article - color - present sizes - needed sizes -
-// count in hall / target - note.
+// scan history: department - product number - article - present sizes - needed
+// sizes - count in hall / target - note. (DB fields: RequestItem.article is the
+// product number, RequestItem.color is the article.)
 
 import type { ReplenishmentRequest, RequestItem } from "@prisma/client";
 import { buildTextPdf, type PdfLine } from "@/lib/pdf";
@@ -11,6 +12,8 @@ import {
   buildTargetSizes,
   presentTotal,
   normalizeLayout,
+  prioritizeSizes,
+  sortSizeKeys,
   targetTotal,
   type SizeLayout,
   type SizeQtyMap,
@@ -47,16 +50,18 @@ function itemTargetCount(item: RequestItem, layout: SizeLayout | null): number {
 }
 
 // "XS S M M L" - repeated tokens like the size tiles in the UI.
-function sizeTokens(map: SizeQtyMap): string {
-  const keys = Object.keys(map);
-  const ordered =
-    keys.length > 0 && keys.every((key) => /^\d+$/.test(key))
-      ? keys.sort((a, b) => Number(a) - Number(b))
-      : ["XS", "S", "M", "L", "XL", ...keys.filter((k) => !["XS", "S", "M", "L", "XL"].includes(k))];
+function sizeTokens(map: SizeQtyMap, ordered: string[] = sortSizeKeys(Object.keys(map))): string {
   const tokens = ordered.flatMap((size) =>
     Array.from({ length: Math.max(0, Number(map[size]) || 0) }, () => size),
   );
   return tokens.length ? tokens.join(" ") : "-";
+}
+
+// When the session started: its first item. The request row itself is created
+// when the previous session finishes, so its createdAt says nothing about this one.
+function sessionStart(data: RequestWithItems): Date {
+  const times = data.items.map((item) => item.createdAt.getTime());
+  return times.length ? new Date(Math.min(...times)) : data.createdAt;
 }
 
 function compareField(a: string | null, b: string | null) {
@@ -73,7 +78,7 @@ function genderRank(storageSection: string | null): number {
 }
 
 export function reportFilename(data: RequestWithItems): string {
-  const date = data.createdAt.toISOString().slice(0, 10);
+  const date = sessionStart(data).toISOString().slice(0, 10);
   return `replenishment-${date}-${data.id.slice(0, 8)}.pdf`;
 }
 
@@ -89,7 +94,7 @@ export async function buildRequestReportPdf(data: RequestWithItems): Promise<Uin
 
   const lines: PdfLine[] = [
     { text: "Replenishment report", size: 18, bold: true },
-    { text: `Date: ${data.createdAt.toISOString().slice(0, 16).replace("T", " ")} UTC` },
+    { text: `Started: ${sessionStart(data).toISOString().slice(0, 16).replace("T", " ")} UTC` },
     { text: `User: ${data.createdBy}` },
     { text: `Items: ${items.length}` },
     { text: "" },
@@ -110,9 +115,10 @@ export async function buildRequestReportPdf(data: RequestWithItems): Promise<Uin
       });
     }
 
-    // One line per item: article - color - present - need - hall X/Y - note
+    // One line per item: product number - article - present - need - hall X/Y - note
     // (truncated with "..." if the line does not fit the page width).
     const present = asMap(item.presentSizesQty);
+    const needed = asMap(item.neededSizesQty);
     const colorParts = [
       item.color ?? "",
       item.colorName ? `(${resolveColor(item.colorName).label})` : "",
@@ -123,7 +129,7 @@ export async function buildRequestReportPdf(data: RequestWithItems): Promise<Uin
       item.article,
       colorParts,
       `p: ${sizeTokens(present)}`,
-      `n: ${sizeTokens(asMap(item.neededSizesQty))}`,
+      `n: ${sizeTokens(needed, prioritizeSizes(itemSizeSystem(item), Object.keys(needed), layout))}`,
       `${presentTotal(present)}/${itemTargetCount(item, layout)}`,
       item.warehouseNote ? `- ${item.warehouseNote}` : "",
     ].filter(Boolean);
