@@ -22,7 +22,9 @@
 - Длина мужских джинсов (2026-11-05): только `men-small`, только `JEANS_LENGTHS` (30, 32), одна длина на товар. Хранится в ключах размеров (`29/32`): клиент держит размеры без длины и шлет `sizeLength`, сервер считает need без длины и применяет `applyLength` при сохранении. Читать через `stripLength`/`lengthOfSizes`. Колонки в БД нет намеренно.
 - Скан - через системную камеру телефона (`<input type="file" capture="environment">`) и `Gallery`. Встроенная камера и управление вспышкой были сделаны и убраны по решению пользователя 2026-11-09: не возвращать.
 - Повторное открытие (2026-11-05): `handleOpenSession` -> `PATCH status: DRAFT` и смена `requestId`; текущий список остается черновиком. `POST /api/requests` переиспользует пустой черновик пользователя, чтобы они не копились. Дата сессии - `startedAt` (время первого товара, считается в `GET /api/requests`), `createdAt` в UI не показывать.
-- Прошлые описания: `GET /api/scan/history?article=` - только товары текущего пользователя, без загрузки фото, дедупликация по `color|colorName|warehouseNote`. Подстановка не перезаписывает коды, прочитанные с этикетки.
+- Прошлые описания: `GET /api/scan/history?article=` - только товары текущего пользователя, без загрузки фото, дедупликация по `color|colorName|warehouseNote`. Подстановка не перезаписывает коды, прочитанные с этикетки. Клиент показывает только совпавшие с `article` этикетки, если такие есть (`visibleSuggestions`); `applySuggestion` всегда ставит `frontSize = null` (решение пользователя 2026-11-10: по умолчанию не фронт).
+- Индикация загрузки (2026-11-10): `app/components/activity-bar.tsx` (в `app/layout.tsx`) оборачивает `window.fetch` и показывает полоску вверху, если запрос дольше 250 мс; `app/components/spinner.tsx` - `Spinner`, `Busy` (для кнопок и строк "Loading...") и `LoadingScreen`. Новое ожидание - через `Busy`/`LoadingScreen`, не голым текстом "...".
+- Settings: списки - только внутри `Collapsible` из `app/settings/ui.tsx`; необратимые действия - через `ConfirmDialog`. Блоки аккаунта - `app/settings/account-settings.tsx` (сотрудник видит их на `/settings`, администраторы - на `/settings/account`).
 - `Last parsed code` и `Rate scan` удалены (2026-11-05), не возвращать. Таблица `ScanFeedback` и модель в Prisma оставлены намеренно: в них данные с фото, удаление - отдельное решение пользователя.
 - Размерная сетка и размеры в зале - НЕ обязательные поля (пользователь явно отменил обязательность 2026-08-18; для `Add to list` достаточно артикула 5+ цифр). Не возвращать required-валидацию ни на клиенте, ни в `/api/scan`.
 - Выбранные размеры - под плитками, `Suggested sizes` - отдельный блок ниже (как в исходном порядке). Тап по плитке размера вызывает `handlePickSize`: добавляет штуку и делает `scrollIntoView` (`block: "nearest"`, smooth) обертки всего блока размеров `sizesRef` с `scroll-mb-28` (запас над sticky `Add to list`), чтобы плитки + выбранные + suggested были видны целиком. Sticky-панель с размерами у кнопки была и отклонена пользователем - не возвращать.
@@ -67,7 +69,7 @@
 - PDF-отчет: `app/api/requests/[id]/report/route.ts`, `lib/report.ts`, `lib/pdf.ts`, шрифты `lib/fonts/`.
 - Авточистка фото: `lib/photo-cleanup.ts`.
 - Prisma schema: `prisma/schema.prisma`.
-- Настройки: `app/settings/page.tsx` (аккаунт), `app/settings/stores/` (филиалы), API `app/api/account/route.ts`, `app/api/stores/`, `app/api/layout/route.ts`, `lib/stores.ts`.
+- Настройки: `app/settings/page.tsx` (экран по роли), `app/settings/account-settings.tsx` + `app/settings/account/` (аккаунт), `app/settings/stores/` (сеть и филиалы), API `app/api/account/route.ts`, `app/api/stores/`, `app/api/layout/route.ts`, `lib/stores.ts`.
 
 ## Работа с документацией
 

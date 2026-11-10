@@ -1,5 +1,6 @@
 "use client";
 
+import { Busy, LoadingScreen } from "./components/spinner";
 import {
   useEffect,
   useMemo,
@@ -620,6 +621,7 @@ export default function Home() {
   // The store's grids/fronts; null = built-in defaults.
   const [storeState, setStoreState] = useState<StoreState | null>(null);
   const [showStorePicker, setShowStorePicker] = useState(false);
+  const [pickerMakeDefault, setPickerMakeDefault] = useState(false);
   const [storeError, setStoreError] = useState("");
   const [layout, setLayout] = useState<SizeLayout | null>(null);
   // Free-text comment for the current item (shown in both modes).
@@ -1067,7 +1069,8 @@ export default function Home() {
   }
 
   // Fill the form from a past description. Codes read from this label win over
-  // old ones; the note, color and grid come from the past scan.
+  // old ones; the note, color and grid come from the past scan. The item starts
+  // as not on a front: where it goes this time is chosen anew.
   function applySuggestion(suggestion: ScanSuggestion) {
     setAppliedSuggestionId(suggestion.id);
     setLastParsed((prev) => {
@@ -1084,7 +1087,7 @@ export default function Home() {
     if (suggestion.sizeSystem && ALL_SIZE_SYSTEMS.includes(suggestion.sizeSystem as SizeSystem)) {
       setSizeSystem(suggestion.sizeSystem as SizeSystem);
     }
-    setFrontSize(suggestion.frontSize);
+    setFrontSize(null);
     setSizeLength(suggestion.sizeLength);
   }
 
@@ -1425,21 +1428,30 @@ export default function Home() {
 
   // Work in another store: its rules apply and its sessions are shown. A list in
   // progress stays a draft of the store it was started in.
-  async function handleChooseStore(storeId: string) {
-    if (storeId === activeStoreId) {
+  async function handleChooseStore(storeId: string, makeDefault = false) {
+    const sameStore = storeId === activeStoreId;
+    if (sameStore && (!makeDefault || storeId === storeState?.defaultStoreId)) {
       setShowStorePicker(false);
       return;
     }
     setStoreError("");
     setBusy(true);
     try {
-      const res = await fetch("/api/stores/active", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ storeId }),
-      });
+      // Same store: only the default changes. Another store: switch (and maybe
+      // make it the default too).
+      const res = sameStore
+        ? await fetch("/api/stores/me", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ defaultStoreId: storeId }),
+          })
+        : await fetch("/api/stores/active", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ storeId, makeDefault }),
+          });
       if (!res.ok) throw new Error("store");
-      if (activeStoreId) {
+      if (activeStoreId && !sameStore) {
         setDraftItems([]);
         resetEntryForm();
         setShowSessions(false);
@@ -1473,12 +1485,16 @@ export default function Home() {
       : false;
   // Empty drafts are just the next list waiting for its first item.
   const visibleSessions = sessions.filter((s) => s._count.items > 0);
+  // Past descriptions: when some match the article on this label, offer only those.
+  const labelArticle = lastParsed?.color.trim() ?? "";
+  const sameArticle = labelArticle
+    ? suggestions.filter((suggestion) => suggestion.color === labelArticle)
+    : [];
+  const visibleSuggestions = sameArticle.length ? sameArticle : suggestions;
 
   if (!authChecked) {
     return (
-      <div className="mx-auto flex min-h-screen w-full max-w-md items-center justify-center p-6 text-sm text-black/50">
-        Loading...
-      </div>
+      <LoadingScreen />
     );
   }
 
@@ -1566,7 +1582,7 @@ export default function Home() {
               className="w-full bg-accent px-4 py-4 text-[13px] font-medium uppercase tracking-[0.04em] text-white disabled:opacity-60"
             >
               {authBusy
-                ? "Please wait..."
+                ? <Busy>Please wait...</Busy>
                 : authMode === "signup"
                   ? "Create account"
                   : "Sign in"}
@@ -1593,9 +1609,7 @@ export default function Home() {
 
   if (!storeState) {
     return (
-      <div className="mx-auto flex min-h-screen w-full max-w-md items-center justify-center p-6 text-sm text-black/50">
-        Loading...
-      </div>
+      <LoadingScreen />
     );
   }
 
@@ -1706,7 +1720,7 @@ export default function Home() {
                   key={store.id}
                   type="button"
                   disabled={busy}
-                  onClick={() => void handleChooseStore(store.id)}
+                  onClick={() => void handleChooseStore(store.id, pickerMakeDefault)}
                   className={`flex w-full items-center justify-between gap-2 border px-4 py-3.5 text-left text-sm font-semibold active:scale-[0.99] disabled:opacity-60 ${
                     store.id === activeStoreId
                       ? "border-accent bg-accent-soft text-accent"
@@ -1720,6 +1734,20 @@ export default function Home() {
                 </button>
               ))}
             </div>
+            <label className="mt-4 flex items-center gap-2 text-sm text-black/70">
+              <input
+                type="checkbox"
+                checked={pickerMakeDefault}
+                disabled={busy}
+                onChange={(event) => setPickerMakeDefault(event.target.checked)}
+              />
+              Make it my default store
+            </label>
+            {busy ? (
+              <p className="mt-3 text-sm text-black/50">
+                <Busy>Switching...</Busy>
+              </p>
+            ) : null}
           </div>
         </div>
       ) : null}
@@ -1755,7 +1783,7 @@ export default function Home() {
                 onClick={() => void handleDeleteItem(deleteTarget)}
                 className="flex-1 bg-danger px-4 py-3.5 text-[13px] font-medium uppercase tracking-[0.04em] text-white disabled:opacity-60"
               >
-                {deleteBusy ? "Deleting..." : "Delete"}
+                {deleteBusy ? <Busy>Deleting...</Busy> : "Delete"}
               </button>
             </div>
           </div>
@@ -1810,7 +1838,7 @@ export default function Home() {
                 onClick={() => void handleFinishReplenishment()}
                 className="flex-1 bg-danger px-4 py-3.5 text-[13px] font-medium uppercase tracking-[0.04em] text-white disabled:opacity-60"
               >
-                {busy ? "Finishing..." : "Finish"}
+                {busy ? <Busy>Finishing...</Busy> : "Finish"}
               </button>
             </div>
           </div>
@@ -1842,7 +1870,11 @@ export default function Home() {
           <button
             type="button"
             disabled={!storeState.canPickStore}
-            onClick={() => setShowStorePicker(true)}
+            onClick={() => {
+              setStoreError("");
+              setPickerMakeDefault(false);
+              setShowStorePicker(true);
+            }}
             className="mt-1.5 flex w-full items-center justify-between gap-2 text-xs font-semibold text-black/70"
           >
             <span className="min-w-0 truncate">
@@ -1900,7 +1932,7 @@ export default function Home() {
                     {expanded ? (
                       <div className="mt-1.5 border-t border-black/5 pt-1.5">
                         {loading ? (
-                          <p className="text-black/40">Loading...</p>
+                          <p className="text-black/40"><Busy>Loading...</Busy></p>
                         ) : !items || items.length === 0 ? (
                           <p className="text-black/40">No items.</p>
                         ) : (
@@ -2001,7 +2033,7 @@ export default function Home() {
                     scanBusy ? "opacity-60" : ""
                   }`}
                 >
-                  {scanBusy ? "Scanning..." : "Scan photo"}
+                  {scanBusy ? <Busy>Scanning...</Busy> : "Scan photo"}
                   <input
                     type="file"
                     accept="image/*"
@@ -2067,13 +2099,13 @@ export default function Home() {
                     />
                   </label>
 
-                  {suggestions.length ? (
+                  {visibleSuggestions.length ? (
                     <div className="border border-black/10 bg-white p-2">
                       <p className="text-[11px] font-semibold uppercase tracking-wide text-black/50">
                         Past descriptions
                       </p>
                       <ul className="mt-1 space-y-1">
-                        {suggestions.map((suggestion) => (
+                        {visibleSuggestions.map((suggestion) => (
                           <li key={suggestion.id}>
                             <button
                               type="button"
@@ -2356,7 +2388,7 @@ export default function Home() {
                   disabled={busy || (lastParsed?.article.length ?? 0) < 5}
                   className="w-full bg-accent px-4 py-4 text-[13px] font-medium uppercase tracking-[0.04em] text-white disabled:opacity-60"
                 >
-                  Add to list
+                  {busy ? <Busy>Add to list</Busy> : "Add to list"}
                 </button>
               </div>
                 </>
@@ -2369,7 +2401,7 @@ export default function Home() {
                     disabled={busy}
                     className="mt-3 w-full border border-accent bg-white px-4 py-4 text-[13px] font-medium uppercase tracking-[0.04em] text-accent disabled:opacity-60"
                   >
-                    Go to warehouse
+                    {busy ? <Busy>Go to warehouse</Busy> : "Go to warehouse"}
                   </button>
 
                 </>

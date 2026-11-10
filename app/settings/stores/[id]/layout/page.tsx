@@ -1,5 +1,6 @@
 "use client";
 
+import { Busy } from "../../../../components/spinner";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
@@ -164,7 +165,7 @@ export default function LayoutEditorPage() {
   if (!draft) {
     return (
       <SettingsShell title="Store rules" backHref={backHref}>
-        <p className="text-sm text-black/50">{loadError || "Loading..."}</p>
+        <p className="text-sm text-black/50">{loadError || <Busy>Loading...</Busy>}</p>
       </SettingsShell>
     );
   }
@@ -548,7 +549,7 @@ export default function LayoutEditorPage() {
           disabled={!dirty || saving || invalidGrids.length > 0}
           className={`mt-2 ${CTA}`}
         >
-          {saving ? "Saving..." : dirty ? "Save for the whole store" : "Saved"}
+          {saving ? <Busy>Saving...</Busy> : dirty ? "Save for the whole store" : "Saved"}
         </button>
       </div>
     </SettingsShell>

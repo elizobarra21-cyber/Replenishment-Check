@@ -100,6 +100,13 @@ export async function storeStateFor(userId: string) {
         select: { role: true },
       })
     : null;
+  // Stores this person administers (the network administrator manages all of
+  // them through the network screen instead).
+  const adminOf = await prisma.storeMember.findMany({
+    where: { userId, role: "ADMIN" },
+    select: { storeId: true },
+  });
+  const managedIds = new Set(adminOf.map((row) => row.storeId));
   return {
     storesExist: stores.length > 0,
     needsStore: stores.length > 0 && !active,
@@ -109,6 +116,8 @@ export async function storeStateFor(userId: string) {
     defaultStoreId: user?.defaultStoreId ?? null,
     canPickStore,
     isNetworkAdmin: Boolean(user?.isNetworkAdmin),
+    managedStores: stores.filter((store) => managedIds.has(store.id)),
+    defaultStoreName: stores.find((store) => store.id === user?.defaultStoreId)?.name ?? null,
     // Only people who may switch see the store list.
     stores: canPickStore ? stores : [],
   };
