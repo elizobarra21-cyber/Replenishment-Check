@@ -128,7 +128,7 @@ export const main: Dict = {
   "Could not delete the item. Check connection and retry.": "تعذّر حذف المنتج. يُرجى التحقق من الاتصال وإعادة المحاولة.",
   "No scan photo saved for product {article}.": "لا توجد صورة مسح محفوظة للمنتج {article}.",
   "Warehouse mode": "وضع المستودع",
-  "Men first, then women. Grouped by department, sorted by product number, article. Sizes in \"need\" go from the most important.": "الرجالي أولًا ثم النسائي. مجمّعة حسب القسم ومرتّبة حسب رقم المنتج ورمز الصنف. المقاسات في «مطلوب» مرتّبة من الأهم.",
+  "Women first, then men. Grouped by department, sorted by product number, article. Sizes in \"need\" go from the most important.": "النسائي أولًا ثم الرجالي. مجمّعة حسب القسم ومرتّبة حسب رقم المنتج ورمز الصنف. المقاسات في «مطلوب» مرتّبة من الأهم.",
   "No warehouse items.": "قائمة المستودع فارغة.",
   "Taken": "أُخذ",
   "Absent": "غير متوفر",

@@ -2727,7 +2727,7 @@ export default function Home() {
               <h2 className="text-xl font-semibold">{t("Warehouse mode")}</h2>
               <p className="mt-1 text-sm text-black/60">
                 {t(
-                  'Men first, then women. Grouped by department, sorted by product number, article. Sizes in "need" go from the most important.',
+                  'Women first, then men. Grouped by department, sorted by product number, article. Sizes in "need" go from the most important.',
                 )}
               </p>
               <button

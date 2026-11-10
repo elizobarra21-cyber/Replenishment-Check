@@ -21,11 +21,11 @@ function storageOrder(storageSection: string | null | undefined) {
   return Number.isInteger(order) && order > 0 ? order : 9999;
 }
 
-// Men's departments (45xx) come first, then women's (23xx), then the rest.
+// Women's departments (23xx) come first, then men's (45xx), then the rest.
 function genderRank(storageSection: string | null | undefined) {
   const normalized = storageSection?.trim() ?? "";
-  if (/^45/.test(normalized)) return 0;
-  if (/^23/.test(normalized)) return 1;
+  if (/^23/.test(normalized)) return 0;
+  if (/^45/.test(normalized)) return 1;
   return 2;
 }
 

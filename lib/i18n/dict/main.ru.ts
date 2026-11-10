@@ -128,7 +128,7 @@ export const main: Dict = {
   "Could not delete the item. Check connection and retry.": "Не удалось удалить товар. Проверьте связь и повторите.",
   "No scan photo saved for product {article}.": "Для товара {article} нет сохраненного фото скана.",
   "Warehouse mode": "Режим склада",
-  "Men first, then women. Grouped by department, sorted by product number, article. Sizes in \"need\" go from the most important.": "Сначала мужское, затем женское. По отделам, внутри - по номеру товара и артикулу. Размеры в «нужно» - от самых важных.",
+  "Women first, then men. Grouped by department, sorted by product number, article. Sizes in \"need\" go from the most important.": "Сначала женское, затем мужское. По отделам, внутри - по номеру товара и артикулу. Размеры в «нужно» - от самых важных.",
   "No warehouse items.": "Список склада пуст.",
   "Taken": "Взято",
   "Absent": "Нет",

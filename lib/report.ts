@@ -69,12 +69,12 @@ function compareField(a: string | null, b: string | null) {
   return (a ?? "").localeCompare(b ?? "", "en", { numeric: true, sensitivity: "base" });
 }
 
-// Same department order as the warehouse walk: men (45**) first, then women
-// (23**), then the rest; inside a gender - by department number.
+// Same department order as the warehouse walk: women (23**) first, then men
+// (45**), then the rest; inside a gender - by department number.
 function genderRank(storageSection: string | null): number {
   const dept = (storageSection ?? "").trim();
-  if (dept.startsWith("45")) return 0;
-  if (dept.startsWith("23")) return 1;
+  if (dept.startsWith("23")) return 0;
+  if (dept.startsWith("45")) return 1;
   return 2;
 }
 
