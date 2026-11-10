@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSessionUser } from "@/lib/auth";
+import { isLang, translator } from "@/lib/i18n/core";
 import { buildRequestReportPdf, reportFilename } from "@/lib/report";
 import { prisma } from "@/lib/prisma";
 import { requestAccess } from "@/lib/stores";
@@ -30,7 +31,9 @@ export async function GET(
     return NextResponse.json({ error: "Request not found" }, { status: 404 });
   }
 
-  const pdf = await buildRequestReportPdf(data);
+  // Russian is the only non-English language the PDF font can print.
+  const saved = /(?:^|;\s*)lang=(\w+)/.exec(request.headers.get("cookie") ?? "")?.[1];
+  const pdf = await buildRequestReportPdf(data, translator(isLang(saved) && saved === "ru" ? "ru" : "en"));
   return new Response(new Uint8Array(pdf), {
     headers: {
       "Content-Type": "application/pdf",

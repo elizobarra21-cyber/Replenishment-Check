@@ -1,3 +1,4 @@
+import type { Translate } from "@/lib/i18n/core";
 export type SizeQtyMap = Record<string, number>;
 
 export const HALL_REQUIRED_SIZES = ["XS", "S", "M", "L", "XL"];
@@ -249,9 +250,10 @@ export function frontsFor(layout?: SizeLayout | null): FrontOption[] {
   return layout?.fronts ?? DEFAULT_FRONTS;
 }
 
-export function frontLabel(capacity: number, layout?: SizeLayout | null): string {
+// A front's own name, else "Front 10" (translated when `t` is given).
+export function frontLabel(capacity: number, layout?: SizeLayout | null, t?: Translate): string {
   const named = frontsFor(layout).find((f) => f.capacity === capacity)?.name;
-  return named || `Front ${capacity}`;
+  return named || (t ? t("Front {capacity}", { capacity }) : `Front ${capacity}`);
 }
 
 function configFor(system: SizeSystem, layout?: SizeLayout | null): SizeConfig {

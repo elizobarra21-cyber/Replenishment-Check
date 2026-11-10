@@ -1,6 +1,7 @@
 "use client";
 
 import { Busy, LoadingScreen } from "./components/spinner";
+import { LanguageSwitcher } from "./components/language-switcher";
 import {
   useEffect,
   useMemo,
@@ -55,16 +56,25 @@ import {
   storeRequestId,
   takePendingInvite,
 } from "@/lib/client-storage";
+import { msg, type Translate } from "@/lib/i18n/core";
+import { useI18n } from "@/lib/i18n/react";
 
 type SizeQtyMap = Record<string, number>;
 
 // Labels for the manual size-grid picker. Shirts exist only on the men's side.
 const CATEGORY_LABELS: Array<{ value: SizeCategory; label: string }> = [
-  { value: "letter", label: "Letter" },
-  { value: "small", label: "Jeans" },
-  { value: "large", label: "Numeric" },
-  { value: "shirt", label: "Shirt" },
+  { value: "letter", label: msg("Letter") },
+  { value: "small", label: msg("Jeans") },
+  { value: "large", label: msg("Numeric") },
+  { value: "shirt", label: msg("Shirt") },
 ];
+
+// Session statuses as shown in Your sessions.
+const STATUS_LABELS: Record<string, string> = {
+  DRAFT: msg("draft"),
+  SUBMITTED: msg("submitted"),
+  DONE: msg("done"),
+};
 
 // Best-effort size system for an already-saved item (older items may lack it).
 function itemSizeSystem(item: RequestItem): SizeSystem {
@@ -109,15 +119,16 @@ function itemNeedOrder(item: RequestItem, layout: SizeLayout | null): string[] {
 // `keep` adds an item's current front even if it was removed from the layout.
 function frontChoices(
   layout: SizeLayout | null,
-  keep?: number | null,
+  keep: number | null | undefined,
+  t: Translate,
 ): Array<[string, number | null]> {
   const fronts = frontsFor(layout).map((f) => f.capacity);
   if (keep && !fronts.includes(keep)) fronts.push(keep);
   return [
-    ["No", null],
+    [t("No"), null],
     ...fronts
       .sort((a, b) => a - b)
-      .map((capacity) => [frontLabel(capacity, layout), capacity] as [string, number]),
+      .map((capacity) => [frontLabel(capacity, layout, t), capacity] as [string, number]),
   ];
 }
 
@@ -230,23 +241,25 @@ function explodeSizeMap(map: SizeQtyMap, orderedSizes: string[] = []) {
   );
 }
 
-function storageGroupName(storageSection: string | null | undefined) {
+function storageGroupName(storageSection: string | null | undefined, t: Translate) {
   const normalized = storageSection?.trim();
-  return normalized ? `Department ${normalized}` : "No department";
+  return normalized ? t("Department {department}", { department: normalized }) : t("No department");
 }
 
 // Render a group heading as "DEPARTMENT" at 60% opacity + the number at full
 // opacity, so the number stands out over the generic label word.
-function SectionHeadingText({ text }: { text: string }) {
-  const match = text.match(/^(\D+)(\S+)?$/);
-  if (!match || !match[2]) {
-    return <span className="text-black/60">{text}</span>;
+function SectionHeadingText({ storageSection }: { storageSection: string | null | undefined }) {
+  const { t, rich } = useI18n();
+  const normalized = storageSection?.trim();
+  if (!normalized) {
+    return <span className="text-black/60">{t("No department")}</span>;
   }
   return (
-    <>
-      <span className="text-black/60">{match[1]}</span>
-      <span className="text-black">{match[2]}</span>
-    </>
+    <span className="text-black/60">
+      {rich("Department {department}", {
+        department: <span className="text-black">{normalized}</span>,
+      })}
+    </span>
   );
 }
 
@@ -452,6 +465,7 @@ function SizeGridPicker({
   onChange: (next: SizeSystem) => void;
   compact?: boolean;
 }) {
+  const { t } = useI18n();
   const gender = genderOf(system);
   const category = categoryOf(system);
   const btn = (active: boolean) =>
@@ -472,7 +486,7 @@ function SizeGridPicker({
             onClick={() => onChange(sizeSystemFromParts(g, category))}
             className={btn(gender === g)}
           >
-            {g === "women" ? "Women" : "Men"}
+            {g === "women" ? t("Women") : t("Men")}
           </button>
         ))}
       </div>
@@ -486,7 +500,7 @@ function SizeGridPicker({
             onClick={() => onChange(sizeSystemFromParts(gender, c.value))}
             className={btn(category === c.value)}
           >
-            {c.label}
+            {t(c.label)}
           </button>
         ))}
       </div>
@@ -504,6 +518,7 @@ function LengthPicker({
   onChange: (next: number | null) => void;
   compact?: boolean;
 }) {
+  const { t } = useI18n();
   return (
     <div className="flex gap-1.5">
       {[null, ...JEANS_LENGTHS].map((length) => (
@@ -520,7 +535,7 @@ function LengthPicker({
               : "border-black/10 bg-white text-black/60"
           }`}
         >
-          {length ?? "No length"}
+          {length ?? t("No length")}
         </button>
       ))}
     </div>
@@ -573,6 +588,7 @@ async function createLabelPhotoUrl(file: File) {
 }
 
 export default function Home() {
+  const { t, rich, locale } = useI18n();
   const [user, setUser] = useState<{ id: string; username: string } | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
@@ -675,13 +691,15 @@ export default function Home() {
     if (!reason) {
       return;
     }
+    // Kept as English keys; translated where shown.
     const messages: Record<string, string> = {
-      "google-not-configured":
+      "google-not-configured": msg(
         "Google sign-in is not configured yet (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET).",
-      "google-denied": "Google sign-in was cancelled. Please try again.",
-      "google-failed": "Google sign-in failed. Please try again.",
+      ),
+      "google-denied": msg("Google sign-in was cancelled. Please try again."),
+      "google-failed": msg("Google sign-in failed. Please try again."),
     };
-    setAuthError(messages[reason] ?? "Sign-in failed. Please try again.");
+    setAuthError(messages[reason] ?? msg("Sign-in failed. Please try again."));
     window.history.replaceState(null, "", window.location.pathname);
   }, []);
 
@@ -703,7 +721,7 @@ export default function Home() {
           });
           if (!joined.ok) {
             const json = await joined.json().catch(() => ({}));
-            setStoreError(errorMessage(json.error, "Could not join the store."));
+            setStoreError(errorMessage(json.error, msg("Could not join the store.")));
           }
         }
         const res = await fetch("/api/stores/me");
@@ -780,7 +798,7 @@ export default function Home() {
           if (!res.ok && res.status !== 404) {
             // Server reachable but errored - keep the id and reuse it.
             setRequestId(storedId);
-            setError("Could not load the saved list. Refresh to retry.");
+            setError(msg("Could not load the saved list. Refresh to retry."));
             return;
           }
           // Missing or from another store: start a fresh one below.
@@ -789,7 +807,7 @@ export default function Home() {
           // Offline / network error - keep the id so adds still target it and
           // the list reloads once the connection is back.
           setRequestId(storedId);
-          setError("Offline? The saved list reloads when the connection returns.");
+          setError(msg("Offline? The saved list reloads when the connection returns."));
           return;
         }
       }
@@ -797,7 +815,7 @@ export default function Home() {
       await createRequest();
     };
 
-    bootstrap().catch(() => setError("Unable to prepare replenishment request."));
+    bootstrap().catch(() => setError(msg("Unable to prepare replenishment request.")));
   }, [user, storeReady, activeStoreId, storeUnknown]);
 
   useEffect(() => {
@@ -967,14 +985,14 @@ export default function Home() {
       const json = await res.json();
       if (!res.ok) {
         setAuthError(
-          errorMessage(json.error, "Could not sign in. Check your details and retry."),
+          errorMessage(json.error, msg("Could not sign in. Check your details and retry.")),
         );
         return;
       }
       setAuthPassword("");
       setUser(json.user as { id: string; username: string });
     } catch {
-      setAuthError("Network error. Please retry.");
+      setAuthError(msg("Network error. Please retry."));
     } finally {
       setAuthBusy(false);
     }
@@ -1028,7 +1046,7 @@ export default function Home() {
 
       if (!extracted?.parsed && !extracted?.article) {
         setCurrentLabelPhotoUrl(null);
-        setError("Could not find the label code above barcode. Try another angle.");
+        setError(msg("Could not find the label code above barcode. Try another angle."));
         return;
       }
 
@@ -1050,7 +1068,7 @@ export default function Home() {
       setLastParsed(extracted.parsed ?? createEmptyParsedLabel(String(extracted.article)));
     } catch {
       setCurrentLabelPhotoUrl(null);
-      setError("Scan failed. Please retry with clearer photo and light.");
+      setError(msg("Scan failed. Please retry with clearer photo and light."));
     } finally {
       setScanBusy(false);
     }
@@ -1093,7 +1111,7 @@ export default function Home() {
 
   async function handleAddItem() {
     if (!requestId || !lastParsed?.article) {
-      setError("Scan the code or enter the product number before adding to warehouse list.");
+      setError(msg("Scan the code or enter the product number before adding to warehouse list."));
       return;
     }
 
@@ -1125,7 +1143,7 @@ export default function Home() {
       const json = await res.json();
 
       if (!res.ok) {
-        setError(errorMessage(json.error, "Failed to save scan"));
+        setError(errorMessage(json.error, msg("Failed to save scan")));
         return;
       }
 
@@ -1144,7 +1162,7 @@ export default function Home() {
         window.scrollTo({ top: 0, behavior: "smooth" });
       }
     } catch {
-      setError("Failed to save scan");
+      setError(msg("Failed to save scan"));
     } finally {
       setBusy(false);
     }
@@ -1164,14 +1182,14 @@ export default function Home() {
       const json = await res.json();
 
       if (!res.ok) {
-        setError(errorMessage(json.error, "Unable to build warehouse list"));
+        setError(errorMessage(json.error, msg("Unable to build warehouse list")));
         return;
       }
 
       setWarehouseGroups(json.grouped as WarehouseGroup[]);
       setMode("warehouse");
     } catch {
-      setError("Unable to build warehouse list");
+      setError(msg("Unable to build warehouse list"));
     } finally {
       setBusy(false);
     }
@@ -1214,7 +1232,7 @@ export default function Home() {
       const json = await res.json();
 
       if (!res.ok) {
-        setError("Unable to start a new replenishment.");
+        setError(msg("Unable to start a new replenishment."));
         return;
       }
 
@@ -1227,7 +1245,7 @@ export default function Home() {
       resetEntryForm();
       setSavePdf(false);
     } catch {
-      setError("Unable to finish replenishment.");
+      setError(msg("Unable to finish replenishment."));
     } finally {
       setBusy(false);
     }
@@ -1278,7 +1296,7 @@ export default function Home() {
       setExpandedSessionId(null);
       void loadSessions();
     } catch {
-      setError("Could not reopen the session. Check connection and retry.");
+      setError(msg("Could not reopen the session. Check connection and retry."));
     } finally {
       setBusy(false);
     }
@@ -1336,7 +1354,7 @@ export default function Home() {
       }
     } catch {
       apply(previous); // revert if the server did not accept it
-      setError("Could not save the mark. Check connection and retry.");
+      setError(msg("Could not save the mark. Check connection and retry."));
     }
   }
 
@@ -1377,7 +1395,7 @@ export default function Home() {
       });
       const json = await res.json();
       if (!res.ok) {
-        setError(errorMessage(json.error, "Failed to save changes"));
+        setError(errorMessage(json.error, msg("Failed to save changes")));
         return;
       }
       const updated = json.item as RequestItem;
@@ -1390,7 +1408,7 @@ export default function Home() {
       );
       setEditingId(null);
     } catch {
-      setError("Failed to save changes");
+      setError(msg("Failed to save changes"));
     } finally {
       setBusy(false);
     }
@@ -1405,7 +1423,7 @@ export default function Home() {
         throw new Error("Unable to delete item");
       }
     } catch {
-      setError("Could not delete the item. Check connection and retry.");
+      setError(msg("Could not delete the item. Check connection and retry."));
       setDeleteBusy(false);
       return;
     }
@@ -1460,7 +1478,7 @@ export default function Home() {
       setStoreState((await res.json()) as StoreState);
       setShowStorePicker(false);
     } catch {
-      setStoreError("Could not switch the store. Check connection and retry.");
+      setStoreError(msg("Could not switch the store. Check connection and retry."));
     } finally {
       setBusy(false);
     }
@@ -1471,7 +1489,7 @@ export default function Home() {
 
     if (!item.labelPhotoUrl) {
       setPhotoViewer(null);
-      setPhotoNotice(`No scan photo saved for product ${item.article}.`);
+      setPhotoNotice(t("No scan photo saved for product {article}.", { article: item.article }));
       return;
     }
 
@@ -1502,13 +1520,16 @@ export default function Home() {
     return (
       <div className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center p-6">
         <div className="border border-black/10 bg-panel p-6">
-          <div className="flex flex-col items-start gap-2.5">
-            <CosLogo className="h-6 w-[68px] text-black" />
-            <span className="text-[12px] font-medium uppercase tracking-[0.08em] text-black">
-              Replenishment
-            </span>
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex flex-col items-start gap-2.5">
+              <CosLogo className="h-6 w-[68px] text-black" />
+              <span className="text-[12px] font-medium uppercase tracking-[0.08em] text-black">
+                {t("Replenishment")}
+              </span>
+            </div>
+            <LanguageSwitcher className="shrink-0" />
           </div>
-          <h1 className="mt-2 text-2xl font-bold">Sign in</h1>
+          <h1 className="mt-2 text-2xl font-bold">{t("Sign in")}</h1>
 
           <a
             href="/api/auth/google"
@@ -1535,11 +1556,11 @@ export default function Home() {
                 d="M12 5.97c1.47 0 2.79.5 3.82 1.5l2.87-2.88A9.97 9.97 0 0 0 12 2a10 10 0 0 0-8.94 5.51L6.4 10.1c.8-2.36 3-4.13 5.6-4.13Z"
               />
             </svg>
-            Continue with Google
+            {t("Continue with Google")}
           </a>
 
           {authError && !showPasswordAuth ? (
-            <div className="mt-3 rounded-lg bg-danger-soft px-3 py-2 text-sm">{authError}</div>
+            <div className="mt-3 rounded-lg bg-danger-soft px-3 py-2 text-sm">{t(authError)}</div>
           ) : null}
 
           <button
@@ -1547,14 +1568,14 @@ export default function Home() {
             onClick={() => setShowPasswordAuth((value) => !value)}
             className="mt-4 w-full text-center text-xs font-semibold text-black/45 underline underline-offset-2"
           >
-            {showPasswordAuth ? "Hide password sign-in" : "Use username & password instead"}
+            {showPasswordAuth ? t("Hide password sign-in") : t("Use username & password instead")}
           </button>
 
           {showPasswordAuth ? (
             <>
           <form onSubmit={submitAuth} className="mt-5 space-y-3">
             <label className="block text-[13px] font-semibold uppercase tracking-[0.04em] text-black">
-              Username
+              {t("Username")}
               <input
                 value={authUsername}
                 onChange={(event) => setAuthUsername(event.target.value)}
@@ -1565,7 +1586,7 @@ export default function Home() {
               />
             </label>
             <label className="block text-[13px] font-semibold uppercase tracking-[0.04em] text-black">
-              Password
+              {t("Password")}
               <input
                 type="password"
                 value={authPassword}
@@ -1574,7 +1595,7 @@ export default function Home() {
               />
             </label>
             {authError ? (
-              <div className="rounded-lg bg-danger-soft px-3 py-2 text-sm">{authError}</div>
+              <div className="rounded-lg bg-danger-soft px-3 py-2 text-sm">{t(authError)}</div>
             ) : null}
             <button
               type="submit"
@@ -1582,10 +1603,10 @@ export default function Home() {
               className="w-full bg-accent px-4 py-4 text-[13px] font-medium uppercase tracking-[0.04em] text-white disabled:opacity-60"
             >
               {authBusy
-                ? <Busy>Please wait...</Busy>
+                ? <Busy>{t("Please wait...")}</Busy>
                 : authMode === "signup"
-                  ? "Create account"
-                  : "Sign in"}
+                  ? t("Create account")
+                  : t("Sign in")}
             </button>
           </form>
           <button
@@ -1597,8 +1618,8 @@ export default function Home() {
             className="mt-4 w-full text-center text-xs font-semibold text-accent underline underline-offset-2"
           >
             {authMode === "signup"
-              ? "Have an account? Sign in"
-              : "New here? Create an account"}
+              ? t("Have an account? Sign in")
+              : t("New here? Create an account")}
           </button>
             </>
           ) : null}
@@ -1617,16 +1638,19 @@ export default function Home() {
     return (
       <div className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center p-6">
         <div className="border border-black/10 bg-panel p-6">
-          <h1 className="text-2xl font-bold">
-            {storeState.canPickStore ? "Which store do you work in?" : "Join your store"}
-          </h1>
+          <div className="flex items-start justify-between gap-3">
+            <h1 className="text-2xl font-bold">
+              {storeState.canPickStore ? t("Which store do you work in?") : t("Join your store")}
+            </h1>
+            <LanguageSwitcher className="shrink-0" />
+          </div>
           {storeError ? (
-            <div className="mt-3 rounded-lg bg-danger-soft px-3 py-2 text-sm">{storeError}</div>
+            <div className="mt-3 rounded-lg bg-danger-soft px-3 py-2 text-sm">{t(storeError)}</div>
           ) : null}
           {storeState.canPickStore ? (
             <>
               <p className="mt-2 text-sm text-black/60">
-                It becomes your default store. You can change it later.
+                {t("It becomes your default store. You can change it later.")}
               </p>
               <div className="mt-4 space-y-2">
                 {storeState.stores.map((store) => (
@@ -1635,7 +1659,7 @@ export default function Home() {
                     type="button"
                     disabled={busy}
                     onClick={() => void handleChooseStore(store.id)}
-                    className="w-full border border-black/15 bg-white px-4 py-4 text-left text-sm font-semibold active:scale-[0.99] disabled:opacity-60"
+                    className="w-full border border-black/15 bg-white px-4 py-4 text-start text-sm font-semibold active:scale-[0.99] disabled:opacity-60"
                   >
                     {store.name}
                   </button>
@@ -1644,14 +1668,14 @@ export default function Home() {
             </>
           ) : (
             <p className="mt-2 text-sm text-black/60">
-              Open the invite link from your store administrator to start working.
+              {t("Open the invite link from your store administrator to start working.")}
             </p>
           )}
           <Link
             href="/settings"
             className="mt-5 block text-center text-xs font-semibold text-black/45 underline underline-offset-2"
           >
-            Settings
+            {t("Settings")}
           </Link>
         </div>
       </div>
@@ -1669,7 +1693,7 @@ export default function Home() {
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4"
           role="dialog"
           aria-modal="true"
-          aria-label={`Scan photo for product ${photoViewer.article}`}
+          aria-label={t("Scan photo for product {article}", { article: photoViewer.article })}
           onClick={() => setPhotoViewer(null)}
         >
           <div
@@ -1677,18 +1701,20 @@ export default function Home() {
             onClick={(event) => event.stopPropagation()}
           >
             <div className="mb-3 flex items-center justify-between gap-3">
-              <h2 className="text-lg font-semibold">Scan photo: {photoViewer.article}</h2>
+              <h2 className="text-lg font-semibold">
+                {t("Scan photo: {article}", { article: photoViewer.article })}
+              </h2>
               <button
                 type="button"
                 onClick={() => setPhotoViewer(null)}
                 className="rounded-lg border border-black/10 px-3 py-2 text-sm font-semibold"
               >
-                Close
+                {t("Close")}
               </button>
             </div>
             <img
               src={photoViewer.url}
-              alt={`Scanned label for product ${photoViewer.article}`}
+              alt={t("Scanned label for product {article}", { article: photoViewer.article })}
               className="max-h-[75vh] w-full rounded-xl bg-background object-contain"
             />
           </div>
@@ -1700,19 +1726,19 @@ export default function Home() {
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
           role="dialog"
           aria-modal="true"
-          aria-label="Choose store"
+          aria-label={t("Choose store")}
           onClick={() => !busy && setShowStorePicker(false)}
         >
           <div
             className="max-h-[80vh] w-full max-w-sm overflow-y-auto border border-black/10 bg-white p-5"
             onClick={(event) => event.stopPropagation()}
           >
-            <h2 className="text-lg font-semibold">Choose store</h2>
+            <h2 className="text-lg font-semibold">{t("Choose store")}</h2>
             <p className="mt-1 text-sm text-black/60">
-              Your current list stays saved as a draft of its store.
+              {t("Your current list stays saved as a draft of its store.")}
             </p>
             {storeError ? (
-              <div className="mt-3 rounded-lg bg-danger-soft px-3 py-2 text-sm">{storeError}</div>
+              <div className="mt-3 rounded-lg bg-danger-soft px-3 py-2 text-sm">{t(storeError)}</div>
             ) : null}
             <div className="mt-4 space-y-2">
               {storeState.stores.map((store) => (
@@ -1721,7 +1747,7 @@ export default function Home() {
                   type="button"
                   disabled={busy}
                   onClick={() => void handleChooseStore(store.id, pickerMakeDefault)}
-                  className={`flex w-full items-center justify-between gap-2 border px-4 py-3.5 text-left text-sm font-semibold active:scale-[0.99] disabled:opacity-60 ${
+                  className={`flex w-full items-center justify-between gap-2 border px-4 py-3.5 text-start text-sm font-semibold active:scale-[0.99] disabled:opacity-60 ${
                     store.id === activeStoreId
                       ? "border-accent bg-accent-soft text-accent"
                       : "border-black/15 bg-white"
@@ -1729,7 +1755,7 @@ export default function Home() {
                 >
                   <span className="min-w-0 truncate">{store.name}</span>
                   {store.id === storeState.defaultStoreId ? (
-                    <span className="shrink-0 text-xs font-semibold text-black/45">default</span>
+                    <span className="shrink-0 text-xs font-semibold text-black/45">{t("default")}</span>
                   ) : null}
                 </button>
               ))}
@@ -1741,11 +1767,11 @@ export default function Home() {
                 disabled={busy}
                 onChange={(event) => setPickerMakeDefault(event.target.checked)}
               />
-              Make it my default store
+              {t("Make it my default store")}
             </label>
             {busy ? (
               <p className="mt-3 text-sm text-black/50">
-                <Busy>Switching...</Busy>
+                <Busy>{t("Switching...")}</Busy>
               </p>
             ) : null}
           </div>
@@ -1757,16 +1783,18 @@ export default function Home() {
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
           role="dialog"
           aria-modal="true"
-          aria-label="Delete item"
+          aria-label={t("Delete item")}
           onClick={() => !deleteBusy && setDeleteTarget(null)}
         >
           <div
             className="w-full max-w-sm border border-black/10 bg-white p-5"
             onClick={(event) => event.stopPropagation()}
           >
-            <h2 className="text-lg font-semibold">Delete {deleteTarget.article}?</h2>
+            <h2 className="text-lg font-semibold">
+              {t("Delete {article}?", { article: deleteTarget.article })}
+            </h2>
             <p className="mt-1 text-sm text-black/60">
-              This removes the item from the current list. This cannot be undone.
+              {t("This removes the item from the current list. This cannot be undone.")}
             </p>
             <div className="mt-5 flex gap-2">
               <button
@@ -1775,7 +1803,7 @@ export default function Home() {
                 onClick={() => setDeleteTarget(null)}
                 className="flex-1 border border-black/15 bg-white px-4 py-3.5 text-[13px] font-medium uppercase tracking-[0.04em] text-black/70 disabled:opacity-60"
               >
-                Cancel
+                {t("Cancel")}
               </button>
               <button
                 type="button"
@@ -1783,7 +1811,7 @@ export default function Home() {
                 onClick={() => void handleDeleteItem(deleteTarget)}
                 className="flex-1 bg-danger px-4 py-3.5 text-[13px] font-medium uppercase tracking-[0.04em] text-white disabled:opacity-60"
               >
-                {deleteBusy ? <Busy>Deleting...</Busy> : "Delete"}
+                {deleteBusy ? <Busy>{t("Deleting...")}</Busy> : t("Delete")}
               </button>
             </div>
           </div>
@@ -1795,17 +1823,18 @@ export default function Home() {
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
           role="dialog"
           aria-modal="true"
-          aria-label="Finish replenishment"
+          aria-label={t("Finish replenishment")}
           onClick={() => !busy && setShowFinishModal(false)}
         >
           <div
             className="w-full max-w-sm rounded-2xl bg-white p-5 shadow-xl"
             onClick={(event) => event.stopPropagation()}
           >
-            <h2 className="text-lg font-semibold">Finish replenishment?</h2>
+            <h2 className="text-lg font-semibold">{t("Finish replenishment?")}</h2>
             <p className="mt-1 text-sm text-black/60">
-              This closes the current session and clears the list. You can reopen it from
-              Your sessions.
+              {t(
+                "This closes the current session and clears the list. You can reopen it from Your sessions.",
+              )}
             </p>
 
             <label className="mt-4 flex items-start gap-2.5 rounded-xl border border-black/10 bg-background p-3">
@@ -1816,9 +1845,9 @@ export default function Home() {
                 className="mt-0.5 h-4 w-4 accent-[var(--accent,#2563eb)]"
               />
               <span className="text-sm">
-                <span className="font-semibold">Save PDF</span>
+                <span className="font-semibold">{t("Save PDF")}</span>
                 <span className="block text-xs text-black/55">
-                  Download a report of this session to your phone
+                  {t("Download a report of this session to your phone")}
                 </span>
               </span>
             </label>
@@ -1830,7 +1859,7 @@ export default function Home() {
                 onClick={() => setShowFinishModal(false)}
                 className="flex-1 border border-black/15 bg-white px-4 py-3.5 text-[13px] font-medium uppercase tracking-[0.04em] text-black/70 disabled:opacity-60"
               >
-                Cancel
+                {t("Cancel")}
               </button>
               <button
                 type="button"
@@ -1838,7 +1867,7 @@ export default function Home() {
                 onClick={() => void handleFinishReplenishment()}
                 className="flex-1 bg-danger px-4 py-3.5 text-[13px] font-medium uppercase tracking-[0.04em] text-white disabled:opacity-60"
               >
-                {busy ? <Busy>Finishing...</Busy> : "Finish"}
+                {busy ? <Busy>{t("Finishing...")}</Busy> : t("Finish")}
               </button>
             </div>
           </div>
@@ -1850,15 +1879,16 @@ export default function Home() {
           <div className="flex min-w-0 items-center gap-2.5">
             <CosLogo className="h-4 w-12 shrink-0 text-black" />
             <span className="truncate text-[12px] font-medium uppercase tracking-[0.08em] text-black">
-              Replenishment
+              {t("Replenishment")}
             </span>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <span className="max-w-[96px] truncate text-xs font-semibold text-black/55">@{user.username}</span>
+            <span dir="ltr" className="max-w-[96px] truncate text-xs font-semibold text-black/55">@{user.username}</span>
+            <LanguageSwitcher className="shrink-0" />
             {/* Log out lives in Settings now (account, password, layout). */}
             <Link
               href="/settings"
-              aria-label="Settings"
+              aria-label={t("Settings")}
               className="flex h-8 w-8 items-center justify-center border border-black/10 bg-white text-black/70 active:scale-[0.96]"
             >
               <GearIcon className="h-[18px] w-[18px]" />
@@ -1879,9 +1909,9 @@ export default function Home() {
           >
             <span className="min-w-0 truncate">
               {storeState.activeStore.name}
-              {onShift ? <span className="text-black/45"> · shift</span> : null}
+              {onShift ? <span className="text-black/45"> · {t("shift")}</span> : null}
             </span>
-            {storeState.canPickStore ? <span className="text-black/45">Change</span> : null}
+            {storeState.canPickStore ? <span className="text-black/45">{t("Change")}</span> : null}
           </button>
         ) : null}
 
@@ -1893,12 +1923,12 @@ export default function Home() {
           }}
           className="mt-1.5 flex w-full items-center justify-between text-xs font-semibold text-black/45"
         >
-          <span>Your sessions ({visibleSessions.length})</span>
-          <span>{showSessions ? "Hide" : "Show"}</span>
+          <span>{t("Your sessions ({n})", { n: visibleSessions.length })}</span>
+          <span>{showSessions ? t("Hide") : t("Show")}</span>
         </button>
         {showSessions ? (
           visibleSessions.length === 0 ? (
-            <p className="mt-1.5 text-xs text-black/45">No past sessions yet.</p>
+            <p className="mt-1.5 text-xs text-black/45">{t("No past sessions yet.")}</p>
           ) : (
             <ul className="mt-1.5 divide-y divide-black/5 border-t border-black/5">
               {visibleSessions.map((s) => {
@@ -1910,13 +1940,13 @@ export default function Home() {
                     <button
                       type="button"
                       onClick={() => void toggleSessionExpand(s.id)}
-                      className="flex w-full items-center justify-between gap-2 text-left"
+                      className="flex w-full items-center justify-between gap-2 text-start"
                     >
                       <span className="text-black/60">
-                        {new Date(s.startedAt).toLocaleString()}
+                        {new Date(s.startedAt).toLocaleString(locale)}
                       </span>
                       <span className="flex shrink-0 items-center gap-2">
-                        <span className="text-black/45">{s._count.items} items</span>
+                        <span className="text-black/45">{t("{n} items", { n: s._count.items })}</span>
                         <span
                           className={`rounded-full px-2 py-0.5 font-semibold ${
                             s.status === "DONE"
@@ -1924,7 +1954,9 @@ export default function Home() {
                               : "bg-background text-black/50"
                           }`}
                         >
-                          {s.id === requestId ? "current" : s.status.toLowerCase()}
+                          {s.id === requestId
+                            ? t("current")
+                            : t(STATUS_LABELS[s.status] ?? s.status.toLowerCase())}
                         </span>
                         <span className="text-black/30">{expanded ? "▲" : "▼"}</span>
                       </span>
@@ -1932,9 +1964,9 @@ export default function Home() {
                     {expanded ? (
                       <div className="mt-1.5 border-t border-black/5 pt-1.5">
                         {loading ? (
-                          <p className="text-black/40"><Busy>Loading...</Busy></p>
+                          <p className="text-black/40"><Busy>{t("Loading...")}</Busy></p>
                         ) : !items || items.length === 0 ? (
-                          <p className="text-black/40">No items.</p>
+                          <p className="text-black/40">{t("No items.")}</p>
                         ) : (
                           <>
                             {/* One line per item: department - product number -
@@ -1972,7 +2004,7 @@ export default function Home() {
                                       order={itemNeedOrder(item, layout)}
                                     />
                                   </span>
-                                  <span className="shrink-0 font-semibold text-black/50">
+                                  <span dir="ltr" className="shrink-0 font-semibold text-black/50">
                                     {presentTotal(item.presentSizesQty)}/{itemTargetCount(item, layout)}
                                   </span>
                                   {item.warehouseNote ? (
@@ -1992,7 +2024,7 @@ export default function Home() {
                                   onClick={() => void handleOpenSession(s)}
                                   className="rounded-lg border border-accent bg-white px-2.5 py-1.5 font-semibold text-accent active:scale-[0.97] disabled:opacity-50"
                                 >
-                                  {s.status === "DONE" ? "Reopen" : "Open"}
+                                  {s.status === "DONE" ? t("Reopen") : t("Open")}
                                 </button>
                               ) : null}
                               <a
@@ -2000,7 +2032,7 @@ export default function Home() {
                                 download
                                 className="rounded-lg border border-black/15 bg-white px-2.5 py-1.5 font-semibold text-black/60 active:scale-[0.97]"
                               >
-                                Download PDF
+                                {t("Download PDF")}
                               </a>
                             </div>
                           </>
@@ -2021,9 +2053,9 @@ export default function Home() {
           <>
             <section className="px-1">
               <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
-                <h2 className="text-xl font-semibold">Hall mode</h2>
+                <h2 className="text-xl font-semibold">{t("Hall mode")}</h2>
                 <span className="rounded-full bg-accent-soft px-3 py-1 text-xs font-semibold uppercase tracking-wider text-accent">
-                  {requestId ? "Request ready" : "Preparing"}
+                  {requestId ? t("Request ready") : t("Preparing")}
                 </span>
               </div>
 
@@ -2033,7 +2065,7 @@ export default function Home() {
                     scanBusy ? "opacity-60" : ""
                   }`}
                 >
-                  {scanBusy ? <Busy>Scanning...</Busy> : "Scan photo"}
+                  {scanBusy ? <Busy>{t("Scanning...")}</Busy> : t("Scan photo")}
                   <input
                     type="file"
                     accept="image/*"
@@ -2049,7 +2081,7 @@ export default function Home() {
                 </label>
                 <div className="mt-2 mb-6 flex flex-wrap items-center justify-center gap-x-5 gap-y-1 text-xs font-semibold text-black/45">
                   <label className="cursor-pointer underline underline-offset-2 hover:text-black/70">
-                    {scanBusy ? "..." : "Gallery"}
+                    {scanBusy ? "..." : t("Gallery")}
                     <input
                       type="file"
                       accept="image/*"
@@ -2068,14 +2100,14 @@ export default function Home() {
                     onClick={handleTypeManually}
                     className="underline underline-offset-2 hover:text-black/70 disabled:opacity-50"
                   >
-                    Type manually
+                    {t("Type manually")}
                   </button>
                 </div>
               </div>
 
               {error ? (
                 <div className="mt-3 rounded-xl bg-danger-soft px-3 py-2 text-sm">
-                  {error}
+                  {t(error)}
                 </div>
               ) : null}
 
@@ -2084,7 +2116,7 @@ export default function Home() {
               <div className="mt-4 border-t border-black/10 pt-4">
                 <div className="space-y-2">
                   <label className="block text-[13px] font-semibold uppercase tracking-[0.04em] text-black">
-                    <span>product number</span>
+                    <span>{t("product number")}</span>
                     <input
                       value={parsedForFields.article}
                       inputMode="numeric"
@@ -2102,7 +2134,7 @@ export default function Home() {
                   {visibleSuggestions.length ? (
                     <div className="border border-black/10 bg-white p-2">
                       <p className="text-[11px] font-semibold uppercase tracking-wide text-black/50">
-                        Past descriptions
+                        {t("Past descriptions")}
                       </p>
                       <ul className="mt-1 space-y-1">
                         {visibleSuggestions.map((suggestion) => (
@@ -2110,7 +2142,7 @@ export default function Home() {
                             <button
                               type="button"
                               onClick={() => applySuggestion(suggestion)}
-                              className={`flex w-full items-center gap-2 overflow-hidden whitespace-nowrap border px-2 py-2 text-left text-sm active:scale-[0.99] ${
+                              className={`flex w-full items-center gap-2 overflow-hidden whitespace-nowrap border px-2 py-2 text-start text-sm active:scale-[0.99] ${
                                 appliedSuggestionId === suggestion.id
                                   ? "border-accent bg-accent-soft"
                                   : "border-black/10 bg-white"
@@ -2128,7 +2160,7 @@ export default function Home() {
                                 {suggestion.warehouseNote}
                               </span>
                               <span className="shrink-0 text-[11px] text-black/40">
-                                {new Date(suggestion.createdAt).toLocaleDateString()}
+                                {new Date(suggestion.createdAt).toLocaleDateString(locale)}
                               </span>
                             </button>
                           </li>
@@ -2138,12 +2170,12 @@ export default function Home() {
                   ) : null}
 
                   <div className="text-[13px] font-semibold uppercase tracking-[0.04em] text-black">
-                    <span>article</span>
+                    <span>{t("article")}</span>
                     <div className="mt-1 flex flex-wrap items-center gap-1.5">
                       <input
                         value={parsedForFields.color}
                         inputMode="numeric"
-                        aria-label="article code"
+                        aria-label={t("article code")}
                         onChange={(event) =>
                           updateParsedField(
                             "color",
@@ -2160,9 +2192,9 @@ export default function Home() {
                             key={swatch.name}
                             type="button"
                             onClick={() => setColorValue(selected ? "" : swatch.name)}
-                            aria-label={swatch.label}
+                            aria-label={t(swatch.label)}
                             aria-pressed={selected}
-                            title={swatch.label}
+                            title={t(swatch.label)}
                             className={`h-7 w-7 rounded-full border transition-transform active:scale-90 ${
                               selected
                                 ? "border-accent ring-2 ring-accent/40 ring-offset-1"
@@ -2174,8 +2206,8 @@ export default function Home() {
                       })}
 
                       <label
-                        title="Pick any color from the spectrum"
-                        aria-label="Pick any color from the spectrum"
+                        title={t("Pick any color from the spectrum")}
+                        aria-label={t("Pick any color from the spectrum")}
                         className={`inline-flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border active:scale-90 ${
                           isHexColor(colorValue)
                             ? "border-accent ring-2 ring-accent/40 ring-offset-1"
@@ -2199,8 +2231,8 @@ export default function Home() {
                         <button
                           type="button"
                           onClick={() => setColorValue("")}
-                          aria-label="Clear color"
-                          title="Clear color"
+                          aria-label={t("Clear color")}
+                          title={t("Clear color")}
                           className="inline-flex h-7 w-7 items-center justify-center rounded-full border border-black/15 text-base leading-none text-black/45 active:scale-90"
                         >
                           ×
@@ -2211,7 +2243,7 @@ export default function Home() {
 
                   <div className="grid grid-cols-2 gap-2">
                     <label className="block text-[13px] font-semibold uppercase tracking-[0.04em] text-black">
-                      <span>season</span>
+                      <span>{t("season")}</span>
                       <input
                         value={parsedForFields.season}
                         inputMode="numeric"
@@ -2226,7 +2258,7 @@ export default function Home() {
                       />
                     </label>
                     <label className="block text-[13px] font-semibold uppercase tracking-[0.04em] text-black">
-                      <span>storage</span>
+                      <span>{t("storage")}</span>
                       <input
                         value={parsedForFields.storageSection}
                         inputMode="numeric"
@@ -2247,10 +2279,10 @@ export default function Home() {
 
               <div className="mt-4 border-t border-black/10 pt-4">
                 <p className="text-[13px] font-semibold uppercase tracking-[0.04em] text-black">
-                  On front
+                  {t("On front")}
                 </p>
                 <div className="mt-2 flex gap-2">
-                  {frontChoices(layout, frontSize).map(([label, value]) => {
+                  {frontChoices(layout, frontSize, t).map(([label, value]) => {
                     const active = frontSize === value;
                     return (
                       <button
@@ -2272,7 +2304,7 @@ export default function Home() {
 
               <div className="mt-4 border-t border-black/10 pt-4">
                 <p className="text-[13px] font-semibold uppercase tracking-[0.04em] text-black">
-                  Size grid
+                  {t("Size grid")}
                 </p>
                 <div className="mt-2">
                   <SizeGridPicker system={sizeSystem} onChange={setSizeSystem} />
@@ -2280,7 +2312,7 @@ export default function Home() {
                 {supportsLength(sizeSystem) ? (
                   <div className="mt-3">
                     <p className="text-[11px] font-semibold uppercase tracking-wide text-black/50">
-                      Length (optional)
+                      {t("Length (optional)")}
                     </p>
                     <div className="mt-1.5">
                       <LengthPicker value={sizeLength} onChange={setSizeLength} />
@@ -2296,10 +2328,16 @@ export default function Home() {
               <div className="mt-4 border-t border-black/10 pt-4">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-[13px] font-semibold uppercase tracking-[0.04em] text-black">
-                    Choose existing sizes
+                    {t("Choose existing sizes")}
                   </p>
                   <span className="rounded-full bg-accent-soft px-2.5 py-1 text-sm font-bold text-accent">
-                    in hall {hallPresentCount} / {hallTargetCount}
+                    {rich("in hall {count}", {
+                      count: (
+                        <span dir="ltr">
+                          {hallPresentCount} / {hallTargetCount}
+                        </span>
+                      ),
+                    })}
                   </span>
                 </div>
                 <div
@@ -2334,7 +2372,7 @@ export default function Home() {
                           }));
                         }}
                         className="rounded-md border border-black/10 bg-white px-2.5 py-1.5 text-sm font-semibold active:scale-[0.97]"
-                        title="Remove one"
+                        title={t("Remove one")}
                       >
                         {withLength(token, activeLength)}
                       </button>
@@ -2347,7 +2385,7 @@ export default function Home() {
 
               <div className="mt-4 border-t border-black/10 pt-4">
                 <p className="text-[13px] font-semibold uppercase tracking-[0.04em] text-black">
-                  Suggested sizes
+                  {t("Suggested sizes")}
                 </p>
                 <div className="mt-2 flex min-h-8 flex-wrap gap-1.5">
                   {neededSizeTokens.length ? (
@@ -2368,13 +2406,13 @@ export default function Home() {
 
               <div className="mt-4 border-t border-black/10 pt-4">
                 <p className="text-[13px] font-semibold uppercase tracking-[0.04em] text-black">
-                  Comment
+                  {t("Comment")}
                 </p>
                 <input
                   value={note}
                   onChange={(event) => setNote(event.target.value)}
                   maxLength={500}
-                  placeholder="Optional note"
+                  placeholder={t("Optional note")}
                   className="mt-2 w-full rounded-lg border border-black/10 bg-white px-3 py-[13px] text-base text-black outline-none ring-0 focus:border-accent"
                 />
               </div>
@@ -2388,7 +2426,7 @@ export default function Home() {
                   disabled={busy || (lastParsed?.article.length ?? 0) < 5}
                   className="w-full bg-accent px-4 py-4 text-[13px] font-medium uppercase tracking-[0.04em] text-white disabled:opacity-60"
                 >
-                  {busy ? <Busy>Add to list</Busy> : "Add to list"}
+                  {busy ? <Busy>{t("Add to list")}</Busy> : t("Add to list")}
                 </button>
               </div>
                 </>
@@ -2401,7 +2439,7 @@ export default function Home() {
                     disabled={busy}
                     className="mt-3 w-full border border-accent bg-white px-4 py-4 text-[13px] font-medium uppercase tracking-[0.04em] text-accent disabled:opacity-60"
                   >
-                    {busy ? <Busy>Go to warehouse</Busy> : "Go to warehouse"}
+                    {busy ? <Busy>{t("Go to warehouse")}</Busy> : t("Go to warehouse")}
                   </button>
 
                 </>
@@ -2410,7 +2448,7 @@ export default function Home() {
 
             <section className="px-1">
               <h2 className="mb-4 flex items-center gap-2 text-xl font-semibold">
-                Warehouse short list
+                {t("Warehouse short list")}
                 {hallListItems.length ? (
                   <span className="rounded-full bg-background px-2 py-0.5 text-xs font-bold text-black/55">
                     {hallListItems.length}
@@ -2418,7 +2456,7 @@ export default function Home() {
                 ) : null}
               </h2>
               {hallListItems.length === 0 ? (
-                <p className="text-sm text-black/60">No items added yet.</p>
+                <p className="text-sm text-black/60">{t("No items added yet.")}</p>
               ) : (
                 // Plain add order, newest on top - no department grouping here.
                 <div className="border border-black/10 bg-white p-3">
@@ -2439,16 +2477,16 @@ export default function Home() {
                                     {item.article}
                                   </span>
                                   <span className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-black/35">
-                                    {storageGroupName(item.storageSection)}
+                                    {storageGroupName(item.storageSection, t)}
                                   </span>
                                 </span>
                                 <div className="flex shrink-0 items-center gap-2">
-                                  <span className="text-base font-bold text-accent">
+                                  <span dir="ltr" className="text-base font-bold text-accent">
                                     {presentTotal(item.presentSizesQty)} / {itemTargetCount(item, layout)}
                                   </span>
                                   <IconButton
                                     onClick={() => (editing ? setEditingId(null) : openEdit(item))}
-                                    label={editing ? "Close editor" : "Edit item"}
+                                    label={editing ? t("Close editor") : t("Edit item")}
                                   >
                                     {editing ? (
                                       <CloseIcon className="h-4 w-4" />
@@ -2458,7 +2496,7 @@ export default function Home() {
                                   </IconButton>
                                   <IconButton
                                     onClick={() => setDeleteTarget(item)}
-                                    label="Delete item"
+                                    label={t("Delete item")}
                                   >
                                     <TrashIcon className="h-4 w-4" />
                                   </IconButton>
@@ -2469,7 +2507,7 @@ export default function Home() {
                                 <div className="mt-2 space-y-2">
                                   <div className="grid grid-cols-3 gap-2">
                                     <label className="text-[11px] font-semibold uppercase tracking-wide text-black/50">
-                                      product no.
+                                      {t("product no.")}
                                       <input
                                         value={editArticle}
                                         inputMode="numeric"
@@ -2479,7 +2517,7 @@ export default function Home() {
                                       />
                                     </label>
                                     <label className="text-[11px] font-semibold uppercase tracking-wide text-black/50">
-                                      season
+                                      {t("season")}
                                       <input
                                         value={editSeason}
                                         inputMode="numeric"
@@ -2489,7 +2527,7 @@ export default function Home() {
                                       />
                                     </label>
                                     <label className="text-[11px] font-semibold uppercase tracking-wide text-black/50">
-                                      dept
+                                      {t("dept")}
                                       <input
                                         value={editStorage}
                                         inputMode="numeric"
@@ -2501,13 +2539,13 @@ export default function Home() {
                                   </div>
 
                                   <div className="text-[11px] font-semibold uppercase tracking-wide text-black/50">
-                                    article
+                                    {t("article")}
                                     <div className="mt-1 flex flex-wrap items-center gap-1.5">
                                       <input
                                         value={editColor}
                                         inputMode="numeric"
                                         maxLength={3}
-                                        aria-label="article code"
+                                        aria-label={t("article code")}
                                         onChange={(e) => setEditColor(e.target.value.replace(/\D/g, "").slice(0, 3))}
                                         className="w-14 rounded-lg border border-black/10 bg-white px-3 py-[11px] text-base font-semibold outline-none focus:border-accent"
                                       />
@@ -2518,8 +2556,8 @@ export default function Home() {
                                             key={sw.name}
                                             type="button"
                                             onClick={() => setEditColorName(sel ? "" : sw.name)}
-                                            aria-label={sw.label}
-                                            title={sw.label}
+                                            aria-label={t(sw.label)}
+                                            title={t(sw.label)}
                                             className={`h-6 w-6 rounded-full border ${
                                               sel ? "border-accent ring-2 ring-accent/40 ring-offset-1" : "border-black/15"
                                             }`}
@@ -2531,7 +2569,7 @@ export default function Home() {
                                         <button
                                           type="button"
                                           onClick={() => setEditColorName("")}
-                                          aria-label="Clear color"
+                                          aria-label={t("Clear color")}
                                           className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-black/15 text-sm leading-none text-black/45"
                                         >
                                           ×
@@ -2541,9 +2579,9 @@ export default function Home() {
                                   </div>
 
                                   <div className="text-[11px] font-semibold uppercase tracking-wide text-black/50">
-                                    on front
+                                    {t("on front")}
                                     <div className="mt-1 flex gap-1.5">
-                                      {frontChoices(layout, editFrontSize).map(([label, value]) => {
+                                      {frontChoices(layout, editFrontSize, t).map(([label, value]) => {
                                         const active = editFrontSize === value;
                                         return (
                                           <button
@@ -2564,7 +2602,7 @@ export default function Home() {
                                   </div>
 
                                   <div className="text-[11px] font-semibold uppercase tracking-wide text-black/50">
-                                    grid
+                                    {t("grid")}
                                     <div className="mt-1">
                                       <SizeGridPicker
                                         system={editSystem}
@@ -2584,7 +2622,7 @@ export default function Home() {
                                   </div>
 
                                   <div className="text-[11px] font-semibold uppercase tracking-wide text-black/50">
-                                    sizes
+                                    {t("sizes")}
                                     <div
                                       className={`mt-1 grid gap-1.5 ${
                                         editSel.length > 5 ? "grid-cols-4" : "grid-cols-5"
@@ -2609,7 +2647,7 @@ export default function Home() {
                                           <button
                                             key={`${token}-${i}`}
                                             type="button"
-                                            title="Remove one"
+                                            title={t("Remove one")}
                                             onClick={() =>
                                               setEditPresent((p) => ({
                                                 ...p,
@@ -2628,11 +2666,11 @@ export default function Home() {
                                   </div>
 
                                   <label className="block text-[11px] font-semibold uppercase tracking-wide text-black/50">
-                                    note
+                                    {t("note")}
                                     <input
                                       value={editNote}
                                       maxLength={500}
-                                      placeholder="Optional note"
+                                      placeholder={t("Optional note")}
                                       onChange={(e) => setEditNote(e.target.value)}
                                       className="mt-1 w-full rounded-lg border border-black/10 bg-white px-3 py-[11px] text-sm outline-none focus:border-accent"
                                     />
@@ -2645,21 +2683,21 @@ export default function Home() {
                                       onClick={() => void saveEdit(item)}
                                       className="flex-1 rounded-lg bg-accent px-3 py-2 text-sm font-semibold text-white disabled:opacity-60"
                                     >
-                                      Save
+                                      {t("Save")}
                                     </button>
                                     <button
                                       type="button"
                                       onClick={() => setEditingId(null)}
                                       className="rounded-lg border border-black/10 bg-white px-3 py-2 text-sm font-semibold text-black/60"
                                     >
-                                      Cancel
+                                      {t("Cancel")}
                                     </button>
                                   </div>
                                 </div>
                               ) : (
                                 <>
                                   <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-black/50">
-                                    <span className="uppercase tracking-wide">present</span>
+                                    <span className="uppercase tracking-wide">{t("present")}</span>
                                     <SizeTiles map={item.presentSizesQty} variant="present" />
                                   </div>
                                   {item.color || item.colorName ? (
@@ -2686,10 +2724,11 @@ export default function Home() {
         ) : (
           <section className="px-1">
             <div className="mb-4">
-              <h2 className="text-xl font-semibold">Warehouse mode</h2>
+              <h2 className="text-xl font-semibold">{t("Warehouse mode")}</h2>
               <p className="mt-1 text-sm text-black/60">
-                Men first, then women. Grouped by department, sorted by product number, article.
-                Sizes in &quot;need&quot; go from the most important.
+                {t(
+                  'Men first, then women. Grouped by department, sorted by product number, article. Sizes in "need" go from the most important.',
+                )}
               </p>
               <button
                 type="button"
@@ -2699,7 +2738,7 @@ export default function Home() {
                 }}
                 className="mt-3 w-full border border-accent bg-white px-4 py-4 text-[13px] font-medium uppercase tracking-[0.04em] text-accent"
               >
-                Hall mode
+                {t("Hall mode")}
               </button>
             </div>
 
@@ -2711,12 +2750,12 @@ export default function Home() {
 
             {error ? (
               <div className="mb-3 rounded-xl bg-danger-soft px-3 py-2 text-sm">
-                {error}
+                {t(error)}
               </div>
             ) : null}
 
             {warehouseGroups.length === 0 ? (
-              <p className="text-sm text-black/60">No warehouse items.</p>
+              <p className="text-sm text-black/60">{t("No warehouse items.")}</p>
             ) : (
               <div className="space-y-5">
                 {warehouseGroups.map((group) => (
@@ -2725,8 +2764,8 @@ export default function Home() {
                     className="border border-black/10 bg-white p-3"
                   >
                     <h3 className="mb-2 flex items-center gap-2 border-b border-black/10 pb-2.5 text-lg font-extrabold uppercase tracking-[0.02em]">
-                      <SectionHeadingText text={group.sectionName} />
-                      <span className="ml-auto rounded-full bg-background px-2 py-0.5 text-xs font-bold text-black/55">
+                      <SectionHeadingText storageSection={group.items[0]?.storageSection} />
+                      <span className="ms-auto rounded-full bg-background px-2 py-0.5 text-xs font-bold text-black/55">
                         {group.items.length}
                       </span>
                     </h3>
@@ -2761,7 +2800,7 @@ export default function Home() {
                                   item.pickStatus === "taken" ? "text-accent" : "text-danger"
                                 }
                               >
-                                {item.pickStatus === "taken" ? "Taken" : "Absent"}
+                                {item.pickStatus === "taken" ? t("Taken") : t("Absent")}
                               </span>
                               <button
                                 type="button"
@@ -2772,9 +2811,9 @@ export default function Home() {
                                   )
                                 }
                                 className="text-black/40 underline underline-offset-2"
-                                title="Undo and bring the full card back"
+                                title={t("Undo and bring the full card back")}
                               >
-                                Undo
+                                {t("Undo")}
                               </button>
                             </span>
                           </article>
@@ -2790,18 +2829,18 @@ export default function Home() {
                             <button
                               type="button"
                               onClick={() => openScanPhoto(item)}
-                              title={item.labelPhotoUrl ? "Open scan photo" : "No scan photo saved"}
-                              className="text-left text-base font-bold text-accent underline decoration-accent/25 underline-offset-4"
+                              title={item.labelPhotoUrl ? t("Open scan photo") : t("No scan photo saved")}
+                              className="text-start text-base font-bold text-accent underline decoration-accent/25 underline-offset-4"
                             >
                               {item.article}
                             </button>
                             <div className="flex shrink-0 items-center gap-2">
-                              <span className="text-base font-bold text-accent">
+                              <span dir="ltr" className="text-base font-bold text-accent">
                                 {presentTotal(item.presentSizesQty)}/{itemTargetCount(item, layout)}
                               </span>
                               <IconButton
                                 onClick={() => setDeleteTarget(item)}
-                                label="Delete item"
+                                label={t("Delete item")}
                               >
                                 <TrashIcon className="h-4 w-4" />
                               </IconButton>
@@ -2814,8 +2853,8 @@ export default function Home() {
                                 className="inline-block h-8 w-8 shrink-0 border border-black/20"
                                 title={
                                   item.colorName
-                                    ? resolveColor(item.colorName).label
-                                    : `article ${item.color ?? ""} (shade unknown)`
+                                    ? t(resolveColor(item.colorName).label)
+                                    : t("article {code} (shade unknown)", { code: item.color ?? "" })
                                 }
                                 style={{
                                   background: item.colorName
@@ -2833,7 +2872,7 @@ export default function Home() {
 
                           <div className="mt-2.5">
                             <span className="text-xs font-semibold uppercase tracking-wide text-accent">
-                              need
+                              {t("need")}
                             </span>
                             <div className="mt-1.5 flex flex-wrap gap-1.5">
                               <SizeTiles
@@ -2845,7 +2884,8 @@ export default function Home() {
                               {optionalHintSizes(item, layout).map((size) => (
                                 <span
                                   key={`opt-${size}`}
-                                  title={`Optional: bring ${size} if available`}
+                                  title={t("Optional: bring {size} if available", { size })}
+                                  dir="ltr"
                                   className="inline-flex min-w-10 justify-center border border-dashed border-black/30 bg-white px-2.5 py-2 text-sm font-semibold text-black/40"
                                 >
                                   {size}?
@@ -2855,9 +2895,9 @@ export default function Home() {
                           </div>
 
                           <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-black/55">
-                            <span>season {formatLabelPart(item.season)}</span>
+                            <span>{t("season {season}", { season: formatLabelPart(item.season) })}</span>
                             <span className="inline-flex items-center gap-1.5">
-                              present
+                              {t("present")}
                               <SizeTiles map={item.presentSizesQty} variant="present" />
                             </span>
                           </div>
@@ -2879,7 +2919,7 @@ export default function Home() {
                                   : "border border-accent bg-white text-accent"
                               }`}
                             >
-                              Taken
+                              {t("Taken")}
                             </button>
                             <button
                               type="button"
@@ -2891,7 +2931,7 @@ export default function Home() {
                                   : "border border-danger/40 bg-white text-danger"
                               }`}
                             >
-                              Absent
+                              {t("Absent")}
                             </button>
                           </div>
                         </article>
@@ -2908,7 +2948,7 @@ export default function Home() {
               disabled={busy || draftItems.length === 0}
               className="mt-12 w-full border border-danger/40 bg-white px-4 py-4 text-[13px] font-medium uppercase tracking-[0.04em] text-danger disabled:opacity-60"
             >
-              Finish replenishment
+              {t("Finish replenishment")}
             </button>
           </section>
         )}

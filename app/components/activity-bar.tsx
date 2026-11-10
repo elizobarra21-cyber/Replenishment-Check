@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useI18n } from "@/lib/i18n/react";
 
 // A thin animated bar at the top of the screen while any request to the server
 // is in flight, so the app never looks frozen. It appears only after a short
@@ -32,6 +33,7 @@ function patchFetch() {
 }
 
 export function ActivityBar() {
+  const { t } = useI18n();
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
@@ -57,7 +59,7 @@ export function ActivityBar() {
   return (
     <div
       role="progressbar"
-      aria-label="Loading"
+      aria-label={t("Loading")}
       className="pointer-events-none fixed inset-x-0 top-0 z-[100] h-[2px] overflow-hidden bg-accent/10"
     >
       <div className="activity-bar h-full w-1/3 bg-accent" />

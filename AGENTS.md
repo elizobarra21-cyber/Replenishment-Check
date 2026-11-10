@@ -14,3 +14,5 @@ Before making changes, read:
 4. recent entries in `doc/CHANGELOG.md`
 
 After every meaningful iteration, update `doc/CHANGELOG.md` with what changed and why. If product behavior, development phases, AI-agent workflow, or GitHub publishing rules change, update the matching file in `doc/`.
+
+Every user-visible text goes through `lib/i18n` (`t()`, `rich()`, `msg()`) and is translated into ru/he/ar in `lib/i18n/dict/` in the same change; `node scripts/i18n-check.mjs` must report nothing missing. Hebrew and Arabic are right-to-left: use logical Tailwind classes (`ms-`, `pe-`, `start-`, `text-start`). See `doc/I18N.md`.

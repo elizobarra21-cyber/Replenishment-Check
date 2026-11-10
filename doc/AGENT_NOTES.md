@@ -53,6 +53,9 @@
 - Роли и филиалы: `doc/MULTI_STORE_PLAN.md`. `/api/account` работает только с аккаунтом текущей сессии.
 - Любой новый API с данными заявки обязан проходить через `requestAccess` или `canManageStore` из `lib/stores.ts`; запись - только при `canWrite`. Все запросы к БД в проверках `await` подряд (connection_limit=1).
 - Google-линковка по email - только если `User.emailVerified` (email от Google). Email из Settings всегда `emailVerified=false`. Не ослаблять эту проверку.
+- Языки (2026-11-10): весь видимый текст - через `t()`/`rich()`/`msg()` из `lib/i18n`, новый текст сразу переводится в `ru`/`he`/`ar` (`lib/i18n/dict/`), проверка - `node scripts/i18n-check.mjs` (должно быть 0 missing). Для `he`/`ar` страница RTL: только логические классы (`ms-`, `pe-`, `start-`, `text-start`). Подробности и термины: `doc/I18N.md`.
+- Редактор правил (2026-11-10) показывает только размеры сетки (main/optional); размеры вне сетки не выводятся, возвращаются через поле `Add a size to this grid`. Размер не из `SIZE_POOLS` и не из дефолта пишется в `custom`.
+- `SettingsShell`: крупный `title` и необязательный `kicker` над ним; на экранах филиала `title` - название филиала.
 - `Log out` - в Settings (не в шапке); выход обязан вызывать `clearStoredSession()` из `lib/client-storage.ts`.
 
 ## Текущая архитектура
@@ -69,6 +72,7 @@
 - PDF-отчет: `app/api/requests/[id]/report/route.ts`, `lib/report.ts`, `lib/pdf.ts`, шрифты `lib/fonts/`.
 - Авточистка фото: `lib/photo-cleanup.ts`.
 - Prisma schema: `prisma/schema.prisma`.
+- Языки: `lib/i18n/` (core, React-провайдер, словари `dict/`), переключатель `app/components/language-switcher.tsx`, проверка `scripts/i18n-check.mjs`.
 - Настройки: `app/settings/page.tsx` (экран по роли), `app/settings/account-settings.tsx` + `app/settings/account/` (аккаунт), `app/settings/stores/` (сеть и филиалы), API `app/api/account/route.ts`, `app/api/stores/`, `app/api/layout/route.ts`, `lib/stores.ts`.
 
 ## Работа с документацией

@@ -1,3 +1,4 @@
+import { msg } from "@/lib/i18n/core";
 // Client-side OCR pipeline for the label scanner.
 //
 // Goals:
@@ -158,7 +159,7 @@ function loadImageFromFile(file: File): Promise<HTMLImageElement> {
     };
     image.onerror = () => {
       URL.revokeObjectURL(url);
-      reject(new Error("Unable to load scan photo"));
+      reject(new Error(msg("Unable to load scan photo")));
     };
     image.src = url;
   });

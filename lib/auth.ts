@@ -4,6 +4,7 @@ import {
   scryptSync,
   timingSafeEqual,
 } from "node:crypto";
+import { msg } from "@/lib/i18n/core";
 
 // Authentication helpers: password hashing (scrypt, no native deps) and a
 // stateless signed session cookie (HMAC-SHA256). Everything here is server-only.
@@ -133,13 +134,13 @@ export function validateCredentials(
   password: string,
 ): string | null {
   if (username.length < 3 || username.length > 32) {
-    return "Username must be 3-32 characters.";
+    return msg("Username must be 3-32 characters.");
   }
   if (!/^[a-z0-9._-]+$/.test(username)) {
-    return "Username may use letters, digits, and . _ - only.";
+    return msg("Username may use letters, digits, and . _ - only.");
   }
   if (password.length < 6 || password.length > 128) {
-    return "Password must be at least 6 characters.";
+    return msg("Password must be at least 6 characters.");
   }
   return null;
 }

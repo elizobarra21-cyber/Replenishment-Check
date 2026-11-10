@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { msg } from "@/lib/i18n/core";
+import { useI18n } from "@/lib/i18n/react";
 import { Busy } from "../../../components/spinner";
 import {
   Collapsible,
@@ -48,6 +50,13 @@ type SessionItem = {
 
 type Status = { kind: "ok" | "error"; text: string } | null;
 
+// Session states as shown in the list (translated at render).
+const STATUS_LABELS: Record<string, string> = {
+  DRAFT: msg("draft"),
+  SUBMITTED: msg("submitted"),
+  DONE: msg("done"),
+};
+
 function sizeList(map: Record<string, number>): string {
   const tokens = Object.entries(map).flatMap(([size, qty]) =>
     Array.from({ length: Math.max(0, Number(qty) || 0) }, () => size),
@@ -59,6 +68,7 @@ function sizeList(map: Record<string, number>): string {
 // (read only). Lists stay folded until opened.
 export default function StorePage() {
   const router = useRouter();
+  const { t, rich, locale } = useI18n();
   const { id } = useParams<{ id: string }>();
   const [store, setStore] = useState<StoreDetails | null>(null);
   const [sessions, setSessions] = useState<StoreSession[]>([]);
@@ -79,13 +89,13 @@ export default function StorePage() {
       return;
     }
     if (!res?.ok) {
-      setStatus({ kind: "error", text: "Could not load the store." });
+      setStatus({ kind: "error", text: t("Could not load the store.") });
       return;
     }
     setStore((await res.json()).store);
     const sres = await fetch(`/api/stores/${id}/sessions`).catch(() => null);
     if (sres?.ok) setSessions((await sres.json()).sessions);
-  }, [id, router]);
+  }, [id, router, t]);
 
   useEffect(() => {
     setOrigin(window.location.origin);
@@ -106,8 +116,8 @@ export default function StorePage() {
         kind: "error",
         text:
           typeof json.error === "string"
-            ? json.error
-            : "Could not save. Check the connection and retry.",
+            ? t(json.error)
+            : t("Could not save. Check the connection and retry."),
       });
     }
     setBusy(false);
@@ -131,7 +141,7 @@ export default function StorePage() {
         fetch(`/api/stores/${id}/members/${member.userId}`, {
           method: "DELETE",
         }),
-      `${member.user.username} removed from the store.`,
+      t("{user} removed from the store.", { user: member.user.username }),
       setPeopleStatus,
     );
     setRemoveTarget(null);
@@ -145,7 +155,7 @@ export default function StorePage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ regenerateCode: true }),
         }),
-      "New link created. The old one no longer works.",
+      t("New link created. The old one no longer works."),
     );
 
   async function toggleSession(sessionId: string) {
@@ -163,16 +173,16 @@ export default function StorePage() {
   }
 
   const back = fromNetwork
-    ? { backHref: "/settings/stores", backLabel: "Network" }
-    : { backHref: "/settings", backLabel: "Settings" };
+    ? { backHref: "/settings/stores", backLabel: t("Network") }
+    : { backHref: "/settings", backLabel: t("Settings") };
 
   if (!store) {
     return (
-      <SettingsShell title="Store" {...back}>
+      <SettingsShell title={t("Store")} {...back}>
         <StatusText status={status} />
         {status ? null : (
           <p className="text-sm text-black/50">
-            <Busy>Loading...</Busy>
+            <Busy>{t("Loading...")}</Busy>
           </p>
         )}
       </SettingsShell>
@@ -182,39 +192,42 @@ export default function StorePage() {
   const inviteLink = `${origin}/join/${store.inviteCode}`;
 
   return (
-    <SettingsShell title={store.name} {...back}>
+    <SettingsShell kicker={t("Store")} title={store.name} {...back}>
       {removeTarget ? (
         <ConfirmDialog
-          title="Remove from the store?"
-          text={
-            <>
-              <span className="font-semibold">{removeTarget.user.username}</span> will no longer be
-              part of {store.name}. Their sessions stay saved. To come back they need to be added
-              again or open the invite link.
-            </>
-          }
-          confirmLabel="Remove"
+          title={t("Remove from the store?")}
+          text={rich(
+            "{user} will no longer be part of {store}. Their sessions stay saved. To come back they need to be added again or open the invite link.",
+            {
+              user: <span className="font-semibold">{removeTarget.user.username}</span>,
+              store: store.name,
+            },
+          )}
+          confirmLabel={t("Remove")}
           busy={busy}
           onConfirm={() => void removeMember(removeTarget)}
           onCancel={() => setRemoveTarget(null)}
         />
       ) : null}
       <Section
-        title="Store rules"
+        title={t("Store rules")}
         description={
           store.layoutUpdatedAt
-            ? `Size grids and fronts for everyone here. Last changed by ${store.layoutUpdatedBy} on ${new Date(store.layoutUpdatedAt).toLocaleDateString()}.`
-            : "Size grids and fronts for everyone here. Standard rules so far."
+            ? t("Size grids and fronts for everyone here. Last changed by {user} on {date}.", {
+                user: store.layoutUpdatedBy ?? "",
+                date: new Date(store.layoutUpdatedAt).toLocaleDateString(locale),
+              })
+            : t("Size grids and fronts for everyone here. Standard rules so far.")
         }
       >
         <Link href={`/settings/stores/${id}/layout`} className={`block text-center ${CTA}`}>
-          Change store rules
+          {t("Change store rules")}
         </Link>
       </Section>
 
       <Section
-        title="Invite link"
-        description="Send it to new employees. They join this store when they open it."
+        title={t("Invite link")}
+        description={t("Send it to new employees. They join this store when they open it.")}
       >
         <p className="break-all border border-black/10 bg-white px-3 py-2.5 text-sm">
           {inviteLink}
@@ -226,10 +239,10 @@ export default function StorePage() {
             onClick={() => {
               void navigator.clipboard
                 ?.writeText(inviteLink)
-                .then(() => setStatus({ kind: "ok", text: "Link copied." }));
+                .then(() => setStatus({ kind: "ok", text: t("Link copied.") }));
             }}
           >
-            Copy link
+            {t("Copy link")}
           </button>
           <button
             type="button"
@@ -237,17 +250,17 @@ export default function StorePage() {
             disabled={busy}
             onClick={() => void regenerate()}
           >
-            New link
+            {t("New link")}
           </button>
         </div>
         <StatusText status={status} />
       </Section>
 
-      <Section title="People">
+      <Section title={t("People")}>
         {store.members.length === 0 ? (
-          <p className="text-sm text-black/50">Nobody has joined yet.</p>
+          <p className="text-sm text-black/50">{t("Nobody has joined yet.")}</p>
         ) : (
-          <Collapsible title="People in this store" count={store.members.length}>
+          <Collapsible title={t("People in this store")} count={store.members.length}>
             <ul className="divide-y divide-black/10">
               {store.members.map((member) => (
                 <li key={member.userId} className="flex items-center gap-2 px-3 py-2.5 text-sm">
@@ -266,7 +279,7 @@ export default function StorePage() {
                         : "border-black/15 text-black/55"
                     }`}
                   >
-                    {member.role === "ADMIN" ? "Admin" : "Make admin"}
+                    {member.role === "ADMIN" ? t("Admin") : t("Make admin")}
                   </button>
                   <button
                     type="button"
@@ -275,7 +288,7 @@ export default function StorePage() {
                       setPeopleStatus(null);
                       setRemoveTarget(member);
                     }}
-                    aria-label={`Remove ${member.user.username}`}
+                    aria-label={t("Remove {name}", { name: member.user.username })}
                     className="shrink-0 px-1.5 text-lg leading-none text-black/40 disabled:opacity-40"
                   >
                     ×
@@ -288,35 +301,38 @@ export default function StorePage() {
         <StatusText status={peopleStatus} />
       </Section>
 
-      <Section title="Sessions" description="Everyone's sessions in this store. View only.">
+      <Section title={t("Sessions")} description={t("Everyone's sessions in this store. View only.")}>
         {sessions.length === 0 ? (
-          <p className="text-sm text-black/50">No sessions yet.</p>
+          <p className="text-sm text-black/50">{t("No sessions yet.")}</p>
         ) : (
-          <Collapsible title="All sessions" count={sessions.length}>
+          <Collapsible title={t("All sessions")} count={sessions.length}>
             <ul className="divide-y divide-black/10">
               {sessions.map((session) => (
                 <li key={session.id} className="px-3 py-2 text-xs">
                   <button
                     type="button"
                     onClick={() => void toggleSession(session.id)}
-                    className="flex w-full items-center justify-between gap-2 text-left"
+                    className="flex w-full items-center justify-between gap-2 text-start"
                   >
                     <span className="min-w-0 truncate">
                       <span className="font-semibold">{session.createdBy}</span>
                       <span className="text-black/50">
                         {" "}
-                        · {new Date(session.startedAt).toLocaleString()}
+                        · {new Date(session.startedAt).toLocaleString(locale)}
                       </span>
                     </span>
                     <span className="shrink-0 text-black/45">
-                      {session._count.items} items · {session.status.toLowerCase()}
+                      {t("{n} items", { n: session._count.items })} ·{" "}
+                      {STATUS_LABELS[session.status]
+                        ? t(STATUS_LABELS[session.status])
+                        : session.status.toLowerCase()}
                     </span>
                   </button>
                   {expanded === session.id ? (
                     <div className="mt-2 border-t border-black/5 pt-2">
                       {items[session.id] ? null : (
                         <p className="text-black/45">
-                          <Busy>Loading...</Busy>
+                          <Busy>{t("Loading...")}</Busy>
                         </p>
                       )}
                       <ul className="space-y-1">
@@ -326,10 +342,10 @@ export default function StorePage() {
                             <span className="font-bold">{item.article}</span>{" "}
                             <span className="text-black/45">{item.color}</span>{" "}
                             <span className="text-black/55">
-                              p: {sizeList(item.presentSizesQty)}
+                              {t("p: {sizes}", { sizes: sizeList(item.presentSizesQty) })}
                             </span>{" "}
                             <span className="font-semibold">
-                              n: {sizeList(item.neededSizesQty)}
+                              {t("n: {sizes}", { sizes: sizeList(item.neededSizesQty) })}
                             </span>
                           </li>
                         ))}
@@ -339,7 +355,7 @@ export default function StorePage() {
                         download
                         className={`mt-2 inline-block ${SECONDARY}`}
                       >
-                        Download PDF
+                        {t("Download PDF")}
                       </a>
                     </div>
                   ) : null}

@@ -2,6 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
+import { msg } from "@/lib/i18n/core";
+import { useI18n } from "@/lib/i18n/react";
 import { Busy } from "../components/spinner";
 import { FIELD_LABEL, INPUT, SECONDARY, Section, StatusText } from "./ui";
 
@@ -25,7 +27,8 @@ async function patchAccount(body: Record<string, string>) {
   });
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
-    throw new Error(typeof json.error === "string" ? json.error : "Could not save.");
+    // An English key; the screen shows it through t().
+    throw new Error(typeof json.error === "string" ? json.error : msg("Could not save."));
   }
   return json.account as Account;
 }
@@ -35,6 +38,7 @@ async function patchAccount(body: Record<string, string>) {
 // administrators open it as a separate Account screen.
 export function AccountSettings() {
   const router = useRouter();
+  const { t } = useI18n();
   const [account, setAccount] = useState<Account | null>(null);
   const [loadError, setLoadError] = useState("");
 
@@ -63,7 +67,8 @@ export function AccountSettings() {
         setUsername(json.account.username);
         setEmail(json.account.email ?? "");
       } catch {
-        setLoadError("Could not load your account. Check the connection and retry.");
+        // Translated at render, so t is not a dependency of this effect.
+        setLoadError(msg("Could not load your account. Check the connection and retry."));
       }
     })();
   }, [router]);
@@ -76,9 +81,9 @@ export function AccountSettings() {
       const next = await patchAccount({ username });
       setAccount(next);
       setUsername(next.username);
-      setUsernameStatus({ kind: "ok", text: "Username saved." });
+      setUsernameStatus({ kind: "ok", text: t("Username saved.") });
     } catch (e) {
-      setUsernameStatus({ kind: "error", text: (e as Error).message });
+      setUsernameStatus({ kind: "error", text: t((e as Error).message) });
     } finally {
       setBusy("");
     }
@@ -92,9 +97,9 @@ export function AccountSettings() {
       const next = await patchAccount({ email });
       setAccount(next);
       setEmail(next.email ?? "");
-      setEmailStatus({ kind: "ok", text: "Email saved." });
+      setEmailStatus({ kind: "ok", text: t("Email saved.") });
     } catch (e) {
-      setEmailStatus({ kind: "error", text: (e as Error).message });
+      setEmailStatus({ kind: "error", text: t((e as Error).message) });
     } finally {
       setBusy("");
     }
@@ -106,14 +111,14 @@ export function AccountSettings() {
     if (newPassword.length < 6) {
       setPasswordStatus({
         kind: "error",
-        text: "Password must be at least 6 characters.",
+        text: t("Password must be at least 6 characters."),
       });
       return;
     }
     if (newPassword !== repeatPassword) {
       setPasswordStatus({
         kind: "error",
-        text: "The new passwords don't match.",
+        text: t("The new passwords don't match."),
       });
       return;
     }
@@ -126,45 +131,45 @@ export function AccountSettings() {
       setCurrentPassword("");
       setNewPassword("");
       setRepeatPassword("");
-      setPasswordStatus({ kind: "ok", text: "Password saved." });
+      setPasswordStatus({ kind: "ok", text: t("Password saved.") });
     } catch (e) {
-      setPasswordStatus({ kind: "error", text: (e as Error).message });
+      setPasswordStatus({ kind: "error", text: t((e as Error).message) });
     } finally {
       setBusy("");
     }
   }
 
   if (!account) {
-    return <p className="text-sm text-black/50">{loadError || <Busy>Loading...</Busy>}</p>;
+    return <p className="text-sm text-black/50">{loadError ? t(loadError) : <Busy>{t("Loading...")}</Busy>}</p>;
   }
 
   const passwordType = showPasswords ? "text" : "password";
 
   return (
     <>
-      <Section title="Sign-in">
+      <Section title={t("Sign-in")}>
         <div className="flex flex-wrap gap-2">
           <span
             className={`border px-2.5 py-1.5 text-xs font-semibold ${
               account.hasGoogle ? "border-accent text-black" : "border-black/10 text-black/40"
             }`}
           >
-            Google · {account.hasGoogle ? "linked" : "not linked"}
+            {account.hasGoogle ? t("Google · linked") : t("Google · not linked")}
           </span>
           <span
             className={`border px-2.5 py-1.5 text-xs font-semibold ${
               account.hasPassword ? "border-accent text-black" : "border-black/10 text-black/40"
             }`}
           >
-            Password · {account.hasPassword ? "set" : "not set"}
+            {account.hasPassword ? t("Password · set") : t("Password · not set")}
           </span>
         </div>
       </Section>
 
-      <Section title="Account">
+      <Section title={t("Account")}>
         <form onSubmit={saveUsername}>
           <label className={FIELD_LABEL}>
-            Username
+            {t("Username")}
             <input
               value={username}
               onChange={(e) => setUsername(e.target.value)}
@@ -179,7 +184,7 @@ export function AccountSettings() {
               className={SECONDARY}
               disabled={busy !== "" || username.trim().toLowerCase() === account.username}
             >
-              {busy === "username" ? <Busy>Saving...</Busy> : "Save username"}
+              {busy === "username" ? <Busy>{t("Saving...")}</Busy> : t("Save username")}
             </button>
           </div>
           <StatusText status={usernameStatus} />
@@ -187,7 +192,7 @@ export function AccountSettings() {
 
         <form onSubmit={saveEmail} className="mt-6">
           <label className={FIELD_LABEL}>
-            Email
+            {t("Email")}
             <input
               type="email"
               value={email}
@@ -201,9 +206,9 @@ export function AccountSettings() {
           <p className="mt-1.5 text-xs text-black/45">
             {account.hasGoogle
               ? account.emailVerified
-                ? "Confirmed by your Google account. Changing it doesn't unlink Google sign-in."
-                : "Google sign-in stays linked to this account whatever email is shown here."
-              : "Not linked to Google. A typed email is not used to sign in with Google."}
+                ? t("Confirmed by your Google account. Changing it doesn't unlink Google sign-in.")
+                : t("Google sign-in stays linked to this account whatever email is shown here.")
+              : t("Not linked to Google. A typed email is not used to sign in with Google.")}
           </p>
           <div className="mt-2 flex justify-end">
             <button
@@ -211,7 +216,7 @@ export function AccountSettings() {
               className={SECONDARY}
               disabled={busy !== "" || email.trim().toLowerCase() === (account.email ?? "")}
             >
-              {busy === "email" ? <Busy>Saving...</Busy> : "Save email"}
+              {busy === "email" ? <Busy>{t("Saving...")}</Busy> : t("Save email")}
             </button>
           </div>
           <StatusText status={emailStatus} />
@@ -219,13 +224,13 @@ export function AccountSettings() {
       </Section>
 
       <Section
-        title="Password"
-        description="Passwords are stored encrypted, so they can't be shown - you can only set a new one."
+        title={t("Password")}
+        description={t("Passwords are stored encrypted, so they can't be shown - you can only set a new one.")}
       >
         <form onSubmit={savePassword} className="space-y-3">
           {account.hasPassword ? (
             <label className={`block ${FIELD_LABEL}`}>
-              Current password
+              {t("Current password")}
               <input
                 type={passwordType}
                 value={currentPassword}
@@ -236,11 +241,11 @@ export function AccountSettings() {
             </label>
           ) : (
             <p className="text-xs text-black/45">
-              You sign in with Google. Set a password to also sign in with your username.
+              {t("You sign in with Google. Set a password to also sign in with your username.")}
             </p>
           )}
           <label className={`block ${FIELD_LABEL}`}>
-            New password
+            {t("New password")}
             <input
               type={passwordType}
               value={newPassword}
@@ -250,7 +255,7 @@ export function AccountSettings() {
             />
           </label>
           <label className={`block ${FIELD_LABEL}`}>
-            Repeat new password
+            {t("Repeat new password")}
             <input
               type={passwordType}
               value={repeatPassword}
@@ -266,7 +271,7 @@ export function AccountSettings() {
                 checked={showPasswords}
                 onChange={(e) => setShowPasswords(e.target.checked)}
               />
-              Show passwords
+              {t("Show passwords")}
             </label>
             <button
               type="submit"
@@ -274,11 +279,11 @@ export function AccountSettings() {
               disabled={busy !== "" || !newPassword || (account.hasPassword && !currentPassword)}
             >
               {busy === "password" ? (
-                <Busy>Saving...</Busy>
+                <Busy>{t("Saving...")}</Busy>
               ) : account.hasPassword ? (
-                "Change password"
+                t("Change password")
               ) : (
-                "Set password"
+                t("Set password")
               )}
             </button>
           </div>

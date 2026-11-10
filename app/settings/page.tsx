@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { clearStoredSession } from "@/lib/client-storage";
+import { msg } from "@/lib/i18n/core";
+import { useI18n } from "@/lib/i18n/react";
 import { Busy } from "../components/spinner";
 import { AccountSettings } from "./account-settings";
 import { CTA, FIELD_LABEL, INPUT, NavRow, SECONDARY, Section, SettingsShell, StatusText } from "./ui";
@@ -29,6 +31,7 @@ type StoreState = {
 // - network administrator: the same plus "Store network".
 export default function SettingsPage() {
   const router = useRouter();
+  const { t, rich } = useI18n();
   const [stores, setStores] = useState<StoreState | null>(null);
   const [storeStatus, setStoreStatus] = useState<Status>(null);
   const [loadError, setLoadError] = useState("");
@@ -41,7 +44,8 @@ export default function SettingsPage() {
         return;
       }
       if (res?.ok) setStores(await res.json());
-      else setLoadError("Could not load your settings. Check the connection and retry.");
+      // Translated at render, so t is not a dependency of this effect.
+      else setLoadError(msg("Could not load your settings. Check the connection and retry."));
     })();
   }, [router]);
 
@@ -55,9 +59,9 @@ export default function SettingsPage() {
     }).catch(() => null);
     if (res?.ok) {
       setStores(await res.json());
-      setStoreStatus({ kind: "ok", text: "Default store saved." });
+      setStoreStatus({ kind: "ok", text: t("Default store saved.") });
     } else {
-      setStoreStatus({ kind: "error", text: "Could not save. Check the connection and retry." });
+      setStoreStatus({ kind: "error", text: t("Could not save. Check the connection and retry.") });
     }
   }
 
@@ -69,8 +73,8 @@ export default function SettingsPage() {
 
   if (!stores) {
     return (
-      <SettingsShell title="Settings" backHref="/">
-        <p className="text-sm text-black/50">{loadError || <Busy>Loading...</Busy>}</p>
+      <SettingsShell title={t("Settings")} backHref="/">
+        <p className="text-sm text-black/50">{loadError ? t(loadError) : <Busy>{t("Loading...")}</Busy>}</p>
       </SettingsShell>
     );
   }
@@ -90,29 +94,27 @@ export default function SettingsPage() {
   const logoutButton = (
     <section className="border-t border-black/10 pt-6 pb-8">
       <button type="button" onClick={() => void logout()} className={`w-full ${SECONDARY} py-3`}>
-        Log out
+        {t("Log out")}
       </button>
     </section>
   );
 
   if (!isManager) {
     return (
-      <SettingsShell title="Settings" backHref="/">
+      <SettingsShell title={t("Settings")} backHref="/">
         <AccountSettings />
         {showStore ? (
-          <Section title="Store">
+          <Section title={t("Store")}>
             <p className="text-sm text-black/70">
-              {stores.defaultStoreName ? (
-                <>
-                  You belong to <span className="font-semibold">{stores.defaultStoreName}</span>.
-                </>
-              ) : (
-                "You don't belong to a store yet."
-              )}
+              {stores.defaultStoreName
+                ? rich("You belong to {store}.", {
+                    store: <span className="font-semibold">{stores.defaultStoreName}</span>,
+                  })
+                : t("You don't belong to a store yet.")}
             </p>
             {workingElsewhere ? (
               <p className="mt-1 text-sm text-black/55">
-                Working now in {workingElsewhere.name} (shift).
+                {t("Working now in {store} (shift).", { store: workingElsewhere.name })}
               </p>
             ) : null}
           </Section>
@@ -123,23 +125,25 @@ export default function SettingsPage() {
   }
 
   return (
-    <SettingsShell title="Settings" backHref="/">
-      <NavRow href="/settings/account" title="Account" hint="Username, email, password" />
+    <SettingsShell title={t("Settings")} backHref="/">
+      <NavRow href="/settings/account" title={t("Account")} hint={t("Username, email, password")} />
 
       {showStore ? (
-        <Section title="My store">
+        <Section title={t("My store")}>
           {workingElsewhere ? (
-            <p className="text-sm text-black/70">Working now in {workingElsewhere.name} (shift).</p>
+            <p className="text-sm text-black/70">
+              {t("Working now in {store} (shift).", { store: workingElsewhere.name })}
+            </p>
           ) : null}
           {stores.canPickStore && stores.stores.length ? (
             <label className={`block ${workingElsewhere ? "mt-3" : ""} ${FIELD_LABEL}`}>
-              Default store
+              {t("Default store")}
               <select
                 value={stores.defaultStoreId ?? ""}
                 onChange={(e) => void saveDefaultStore(e.target.value)}
                 className={INPUT}
               >
-                {stores.defaultStoreId ? null : <option value="">Choose a store</option>}
+                {stores.defaultStoreId ? null : <option value="">{t("Choose a store")}</option>}
                 {stores.stores.map((store) => (
                   <option key={store.id} value={store.id}>
                     {store.name}
@@ -153,7 +157,7 @@ export default function SettingsPage() {
             <div className="mt-3 space-y-2">
               {manageable.map((store) => (
                 <Link key={store.id} href={`/settings/stores/${store.id}`} className={`block text-center ${CTA}`}>
-                  Manage {store.name}
+                  {t("Manage {store}", { store: store.name })}
                 </Link>
               ))}
             </div>
@@ -162,7 +166,11 @@ export default function SettingsPage() {
       ) : null}
 
       {stores.isNetworkAdmin ? (
-        <NavRow href="/settings/stores" title="Store network" hint="Stores, people without a store" />
+        <NavRow
+          href="/settings/stores"
+          title={t("Store network")}
+          hint={t("Stores, people without a store")}
+        />
       ) : null}
 
       {logoutButton}

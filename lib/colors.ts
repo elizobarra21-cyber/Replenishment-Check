@@ -3,6 +3,9 @@
 // is stored as either a known color `name` (e.g. "blue") or a `#rrggbb` hex
 // picked from the spectrum, and resolved back to a swatch color + label here.
 
+import { msg } from "@/lib/i18n/core";
+
+// Labels are English; screens show them through t() (lib/i18n).
 export type CommonColor = {
   name: string;
   label: string;
@@ -14,26 +17,26 @@ export type CommonColor = {
 // Rouge, Turquoise, Vert), with proper garment shades instead of the site's
 // placeholder RGB values.
 export const COMMON_COLORS: CommonColor[] = [
-  { name: "white", label: "White", hex: "#FFFFFF" },
-  { name: "black", label: "Black", hex: "#1A1A1A" },
-  { name: "gray", label: "Gray", hex: "#B6B6B4" },
-  { name: "beige", label: "Beige", hex: "#E3D5B8" },
-  { name: "brown", label: "Brown", hex: "#2B1B17" },
-  { name: "blue", label: "Blue", hex: "#151B54" },
-  { name: "turquoise", label: "Turquoise", hex: "#4AC6C9" },
-  { name: "green", label: "Green", hex: "#2F6B4F" },
-  { name: "yellow", label: "Yellow", hex: "#FFE87C" },
-  { name: "orange", label: "Orange", hex: "#E8762C" },
-  { name: "red", label: "Red", hex: "#DC2626" },
-  { name: "pink", label: "Pink", hex: "#FAAFBA" },
-  { name: "mauve", label: "Mauve", hex: "#A47DAB" },
+  { name: "white", label: msg("White"), hex: "#FFFFFF" },
+  { name: "black", label: msg("Black"), hex: "#1A1A1A" },
+  { name: "gray", label: msg("Gray"), hex: "#B6B6B4" },
+  { name: "beige", label: msg("Beige"), hex: "#E3D5B8" },
+  { name: "brown", label: msg("Brown"), hex: "#2B1B17" },
+  { name: "blue", label: msg("Blue"), hex: "#151B54" },
+  { name: "turquoise", label: msg("Turquoise"), hex: "#4AC6C9" },
+  { name: "green", label: msg("Green"), hex: "#2F6B4F" },
+  { name: "yellow", label: msg("Yellow"), hex: "#FFE87C" },
+  { name: "orange", label: msg("Orange"), hex: "#E8762C" },
+  { name: "red", label: msg("Red"), hex: "#DC2626" },
+  { name: "pink", label: msg("Pink"), hex: "#FAAFBA" },
+  { name: "mauve", label: msg("Mauve"), hex: "#A47DAB" },
 ];
 
 // Names no longer in the picker but stored on older items - keep resolving them.
 const LEGACY_COLORS: CommonColor[] = [
-  { name: "sky", label: "Sky", hex: "#3BB9FF" },
-  { name: "cream", label: "Cream", hex: "#FFF8E1" },
-  { name: "burgundy", label: "Burgundy", hex: "#7B1E2B" },
+  { name: "sky", label: msg("Sky"), hex: "#3BB9FF" },
+  { name: "cream", label: msg("Cream"), hex: "#FFF8E1" },
+  { name: "burgundy", label: msg("Burgundy"), hex: "#7B1E2B" },
 ];
 
 const COMMON_COLOR_BY_NAME = new Map(

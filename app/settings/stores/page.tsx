@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useI18n } from "@/lib/i18n/react";
 import { Busy } from "../../components/spinner";
 import { Collapsible, CTA, FIELD_LABEL, INPUT, Section, SettingsShell, StatusText } from "../ui";
 
@@ -13,6 +14,7 @@ type Status = { kind: "ok" | "error"; text: string } | null;
 // Network administrators: every store, people without a store, new stores.
 export default function StoreNetworkPage() {
   const router = useRouter();
+  const { t, locale } = useI18n();
   const [stores, setStores] = useState<StoreRow[] | null>(null);
   const [loose, setLoose] = useState<LooseUser[]>([]);
   const [name, setName] = useState("");
@@ -28,13 +30,13 @@ export default function StoreNetworkPage() {
       return;
     }
     if (!res?.ok) {
-      setStatus({ kind: "error", text: "Could not load the stores." });
+      setStatus({ kind: "error", text: t("Could not load the stores.") });
       return;
     }
     setStores((await res.json()).stores);
     const ures = await fetch("/api/stores/unassigned").catch(() => null);
     if (ures?.ok) setLoose((await ures.json()).users);
-  }, [router]);
+  }, [router, t]);
 
   useEffect(() => {
     void load();
@@ -52,12 +54,12 @@ export default function StoreNetworkPage() {
     const json = res ? await res.json().catch(() => ({})) : {};
     if (res?.ok) {
       setName("");
-      setStatus({ kind: "ok", text: "Store created." });
+      setStatus({ kind: "ok", text: t("Store created.") });
       await load();
     } else {
       setStatus({
         kind: "error",
-        text: typeof json.error === "string" ? json.error : "Could not create the store.",
+        text: typeof json.error === "string" ? t(json.error) : t("Could not create the store."),
       });
     }
     setBusy(false);
@@ -74,27 +76,32 @@ export default function StoreNetworkPage() {
       body: JSON.stringify({ userId: user.id }),
     }).catch(() => null);
     if (res?.ok) {
-      setLooseStatus({ kind: "ok", text: `${user.username} added to ${store?.name ?? "the store"}.` });
+      setLooseStatus({
+        kind: "ok",
+        text: store
+          ? t("{user} added to {store}.", { user: user.username, store: store.name })
+          : t("{user} added to the store.", { user: user.username }),
+      });
       await load();
     } else {
-      setLooseStatus({ kind: "error", text: "Could not add. Check the connection and retry." });
+      setLooseStatus({ kind: "error", text: t("Could not add. Check the connection and retry.") });
     }
     setAddingId(null);
   }
 
   return (
-    <SettingsShell title="Store network" backHref="/settings" backLabel="Settings">
+    <SettingsShell title={t("Store network")} backHref="/settings" backLabel={t("Settings")}>
       {!stores ? (
         <p className="text-sm text-black/50">
-          {status?.kind === "error" ? status.text : <Busy>Loading...</Busy>}
+          {status?.kind === "error" ? status.text : <Busy>{t("Loading...")}</Busy>}
         </p>
       ) : (
         <>
-          <Section title="Stores">
+          <Section title={t("Stores")}>
             {stores.length === 0 ? (
-              <p className="text-sm text-black/50">No stores yet. Create the first one below.</p>
+              <p className="text-sm text-black/50">{t("No stores yet. Create the first one below.")}</p>
             ) : (
-              <Collapsible title="All stores" count={stores.length}>
+              <Collapsible title={t("All stores")} count={stores.length}>
                 <ul className="divide-y divide-black/10">
                   {stores.map((store) => (
                     <li key={store.id}>
@@ -104,7 +111,8 @@ export default function StoreNetworkPage() {
                       >
                         <span className="min-w-0 truncate">{store.name}</span>
                         <span className="shrink-0 text-xs font-normal text-black/45">
-                          {store._count.members} people ›
+                          {t("{n} people", { n: store._count.members })}{" "}
+                          <span className="inline-block rtl:rotate-180">›</span>
                         </span>
                       </Link>
                     </li>
@@ -115,35 +123,35 @@ export default function StoreNetworkPage() {
           </Section>
 
           <Section
-            title="People without a store"
-            description="New accounts without an invite link and people removed from their last store."
+            title={t("People without a store")}
+            description={t("New accounts without an invite link and people removed from their last store.")}
           >
             {loose.length === 0 ? (
-              <p className="text-sm text-black/50">Everyone belongs to a store.</p>
+              <p className="text-sm text-black/50">{t("Everyone belongs to a store.")}</p>
             ) : (
-              <Collapsible title="People" count={loose.length}>
+              <Collapsible title={t("People")} count={loose.length}>
                 <ul className="divide-y divide-black/10">
                   {loose.map((user) => (
                     <li key={user.id} className="flex items-center gap-2 px-4 py-2.5 text-sm">
                       <span className="min-w-0 flex-1">
                         <span className="block truncate font-semibold">{user.username}</span>
                         <span className="block text-xs text-black/45">
-                          since {new Date(user.createdAt).toLocaleDateString()}
+                          {t("since {date}", { date: new Date(user.createdAt).toLocaleDateString(locale) })}
                         </span>
                       </span>
                       {addingId === user.id ? (
                         <span className="shrink-0 text-xs text-black/50">
-                          <Busy>Adding...</Busy>
+                          <Busy>{t("Adding...")}</Busy>
                         </span>
                       ) : stores.length ? (
                         <select
-                          aria-label={`Add ${user.username} to a store`}
+                          aria-label={t("Add {user} to a store", { user: user.username })}
                           value=""
                           disabled={addingId !== null}
                           onChange={(e) => void addToStore(user, e.target.value)}
                           className="w-36 shrink-0 border border-black/15 bg-white px-2 py-1.5 text-xs font-semibold"
                         >
-                          <option value="">Add to store</option>
+                          <option value="">{t("Add to store")}</option>
                           {stores.map((store) => (
                             <option key={store.id} value={store.id}>
                               {store.name}
@@ -159,10 +167,10 @@ export default function StoreNetworkPage() {
             <StatusText status={looseStatus} />
           </Section>
 
-          <Section title="New store">
+          <Section title={t("New store")}>
             <form onSubmit={createStore} className="space-y-3">
               <label className={`block ${FIELD_LABEL}`}>
-                Name
+                {t("Name")}
                 <input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
@@ -171,7 +179,7 @@ export default function StoreNetworkPage() {
                 />
               </label>
               <button type="submit" disabled={busy || !name.trim()} className={CTA}>
-                {busy ? <Busy>Creating...</Busy> : "Create store"}
+                {busy ? <Busy>{t("Creating...")}</Busy> : t("Create store")}
               </button>
               <StatusText status={status} />
             </form>

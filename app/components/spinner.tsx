@@ -1,3 +1,7 @@
+"use client";
+
+import { useI18n } from "@/lib/i18n/react";
+
 // Small "thinking" indicators: a spinning ring that inherits the text color,
 // and a centered full-screen variant for first loads.
 
@@ -20,14 +24,15 @@ export function Busy({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function LoadingScreen({ text = "Loading..." }: { text?: string }) {
+export function LoadingScreen({ text }: { text?: string }) {
+  const { t } = useI18n();
   return (
     <div
       role="status"
       className="mx-auto flex min-h-screen w-full max-w-md items-center justify-center gap-2 p-6 text-sm text-black/50"
     >
       <Spinner />
-      {text}
+      {text ?? t("Loading...")}
     </div>
   );
 }

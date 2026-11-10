@@ -77,3 +77,8 @@ body {
     animation-duration: 3s;
   }
 }
+
+/* Arabic letters join; letter-spacing from the uppercase label styles breaks them apart. */
+:lang(ar) * {
+  letter-spacing: normal !important;
+}

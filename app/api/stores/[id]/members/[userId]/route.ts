@@ -3,6 +3,7 @@ import { z } from "zod";
 import { getSessionUser } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { canManageStore } from "@/lib/stores";
+import { msg } from "@/lib/i18n/core";
 
 // Run this function in Frankfurt (fra1) - closest to the Supabase DB and to Israel.
 export const preferredRegion = "fra1";
@@ -11,7 +12,7 @@ type Context = { params: Promise<{ id: string; userId: string }> };
 
 const schema = z.object({ role: z.enum(["MEMBER", "ADMIN"]) });
 
-const LAST_ADMIN_ERROR = "A store needs at least one admin. Make someone else admin first.";
+const LAST_ADMIN_ERROR = msg("A store needs at least one admin. Make someone else admin first.");
 
 async function isLastAdmin(storeId: string, role: string): Promise<boolean> {
   if (role !== "ADMIN") return false;

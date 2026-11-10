@@ -7,6 +7,7 @@
 import type { ReplenishmentRequest, RequestItem } from "@prisma/client";
 import { buildTextPdf, type PdfLine } from "@/lib/pdf";
 import { resolveColor } from "@/lib/colors";
+import { translate, type Translate } from "@/lib/i18n/core";
 import {
   ALL_SIZE_SYSTEMS,
   buildTargetSizes,
@@ -82,7 +83,12 @@ export function reportFilename(data: RequestWithItems): string {
   return `replenishment-${date}-${data.id.slice(0, 8)}.pdf`;
 }
 
-export async function buildRequestReportPdf(data: RequestWithItems): Promise<Uint8Array> {
+// `t` translates the report's own words; the PDF font covers Latin and
+// Cyrillic only, so Hebrew and Arabic readers get the English report.
+export async function buildRequestReportPdf(
+  data: RequestWithItems,
+  t: Translate = (key, vars) => translate("en", key, vars),
+): Promise<Uint8Array> {
   const layout = data.store?.layout ? normalizeLayout(data.store.layout) : null;
   const items = [...data.items].sort(
     (a, b) =>
@@ -93,10 +99,14 @@ export async function buildRequestReportPdf(data: RequestWithItems): Promise<Uin
   );
 
   const lines: PdfLine[] = [
-    { text: "Replenishment report", size: 18, bold: true },
-    { text: `Started: ${sessionStart(data).toISOString().slice(0, 16).replace("T", " ")} UTC` },
-    { text: `User: ${data.createdBy}` },
-    { text: `Items: ${items.length}` },
+    { text: t("Replenishment report"), size: 18, bold: true },
+    {
+      text: t("Started: {time} UTC", {
+        time: sessionStart(data).toISOString().slice(0, 16).replace("T", " "),
+      }),
+    },
+    { text: t("User: {user}", { user: data.createdBy }) },
+    { text: t("Items: {n}", { n: items.length }) },
     { text: "" },
   ];
 
@@ -109,7 +119,7 @@ export async function buildRequestReportPdf(data: RequestWithItems): Promise<Uin
       currentDept = item.storageSection;
       const deptItems = items.filter((i) => i.storageSection === currentDept);
       lines.push({
-        text: `Department ${currentDept?.trim() || "-"} (${deptItems.length})`,
+        text: t("Department {dept} ({n})", { dept: currentDept?.trim() || "-", n: deptItems.length }),
         size: 13,
         bold: true,
       });
@@ -121,15 +131,15 @@ export async function buildRequestReportPdf(data: RequestWithItems): Promise<Uin
     const needed = asMap(item.neededSizesQty);
     const colorParts = [
       item.color ?? "",
-      item.colorName ? `(${resolveColor(item.colorName).label})` : "",
+      item.colorName ? `(${t(resolveColor(item.colorName).label)})` : "",
     ]
       .filter(Boolean)
       .join(" ");
     const chunks = [
       item.article,
       colorParts,
-      `p: ${sizeTokens(present)}`,
-      `n: ${sizeTokens(needed, prioritizeSizes(itemSizeSystem(item), Object.keys(needed), layout))}`,
+      `${t("p:")} ${sizeTokens(present)}`,
+      `${t("n:")} ${sizeTokens(needed, prioritizeSizes(itemSizeSystem(item), Object.keys(needed), layout))}`,
       `${presentTotal(present)}/${itemTargetCount(item, layout)}`,
       item.warehouseNote ? `- ${item.warehouseNote}` : "",
     ].filter(Boolean);

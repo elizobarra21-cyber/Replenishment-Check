@@ -1,6 +1,8 @@
 "use client";
 
 import { Busy } from "../../../../components/spinner";
+import { msg, type Translate } from "@/lib/i18n/core";
+import { useI18n } from "@/lib/i18n/react";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import {
@@ -27,13 +29,13 @@ import { CTA, FIELD_LABEL, INPUT, LABEL, SECONDARY, Section, SettingsShell, Stat
 // Editable copy of the store's rules: every grid filled in (defaults where the
 // store has no override), plus the fronts list.
 type Draft = { grids: Record<SizeSystem, GridLayout>; fronts: FrontOption[] };
-type TileState = "main" | "optional" | "off";
+type TileState = "main" | "optional";
 
 const CATEGORIES: Array<{ value: SizeCategory; label: string }> = [
-  { value: "letter", label: "Letter" },
-  { value: "small", label: "Jeans" },
-  { value: "large", label: "Numeric" },
-  { value: "shirt", label: "Shirt" },
+  { value: "letter", label: msg("Letter") },
+  { value: "small", label: msg("Jeans") },
+  { value: "large", label: msg("Numeric") },
+  { value: "shirt", label: msg("Shirt") },
 ];
 
 function draftFromLayout(layout: SizeLayout | null): Draft {
@@ -87,9 +89,12 @@ function layoutFromDraft(draft: Draft): SizeLayout | null {
   return layout.grids || layout.fronts ? layout : null;
 }
 
-function gridTitle(system: SizeSystem): string {
-  const cat = CATEGORIES.find((c) => c.value === categoryOf(system))?.label ?? "";
-  return `${genderOf(system) === "men" ? "Men" : "Women"} · ${cat}`;
+function gridTitle(system: SizeSystem, t: Translate): string {
+  const label = CATEGORIES.find((c) => c.value === categoryOf(system))?.label;
+  const category = label ? t(label) : "";
+  return genderOf(system) === "men"
+    ? t("Men · {category}", { category })
+    : t("Women · {category}", { category });
 }
 
 // Repeated tokens in size order, e.g. { S: 2, M: 1 } -> ["S", "S", "M"].
@@ -99,27 +104,50 @@ function tokens(map: Record<string, number>): string[] {
   );
 }
 
-function SizeTile({ size, state, onTap }: { size: string; state: TileState; onTap: () => void }) {
+// One size of the grid: tap switches main <-> optional, × takes it out of the grid.
+function SizeTile({
+  size,
+  state,
+  onTap,
+  onRemove,
+}: {
+  size: string;
+  state: TileState;
+  onTap: () => void;
+  onRemove: () => void;
+}) {
+  const { t } = useI18n();
   const cls =
     state === "main"
       ? "border-accent bg-accent text-white"
-      : state === "optional"
-        ? "border-dashed border-black/50 bg-white text-black"
-        : "border-black/10 bg-white text-black/30";
+      : "border-dashed border-black/50 bg-white text-black";
   return (
-    <button
-      type="button"
-      onClick={onTap}
-      aria-label={`${size}: ${state}`}
-      className={`flex h-12 min-w-12 flex-col items-center justify-center border px-2 transition-colors active:scale-[0.96] ${cls}`}
-    >
-      <span className="text-sm font-semibold leading-none">{state === "optional" ? `${size}?` : size}</span>
-    </button>
+    <span className={`inline-flex h-12 items-stretch border transition-colors ${cls}`}>
+      <button
+        type="button"
+        onClick={onTap}
+        aria-label={state === "main" ? t("{size}: main", { size }) : t("{size}: optional", { size })}
+        className="flex min-w-11 items-center justify-center ps-2.5 pe-1 text-sm font-semibold leading-none active:scale-[0.96]"
+      >
+        <span dir="ltr">{state === "optional" ? `${size}?` : size}</span>
+      </button>
+      <button
+        type="button"
+        onClick={onRemove}
+        aria-label={t("Remove {name}", { name: size })}
+        className={`flex w-7 items-center justify-center text-base leading-none ${
+          state === "main" ? "text-white/70" : "text-black/40"
+        }`}
+      >
+        ×
+      </button>
+    </span>
   );
 }
 
 export default function LayoutEditorPage() {
   const router = useRouter();
+  const { t } = useI18n();
   const { id: storeId } = useParams<{ id: string }>();
   const backHref = `/settings/stores/${storeId}`;
   const [storeName, setStoreName] = useState("");
@@ -151,7 +179,8 @@ export default function LayoutEditorPage() {
         setSaved(layout);
         setDraft(draftFromLayout(layout));
       } catch {
-        setLoadError("Could not load the store rules. Check the connection and retry.");
+        // Translated at render, so t is not a dependency of this effect.
+        setLoadError(msg("Could not load the store rules. Check the connection and retry."));
       }
     })();
   }, [router, storeId]);
@@ -164,62 +193,58 @@ export default function LayoutEditorPage() {
 
   if (!draft) {
     return (
-      <SettingsShell title="Store rules" backHref={backHref}>
-        <p className="text-sm text-black/50">{loadError || <Busy>Loading...</Busy>}</p>
+      <SettingsShell title={t("Store rules")} backHref={backHref}>
+        <p className="text-sm text-black/50">{loadError ? t(loadError) : <Busy>{t("Loading...")}</Busy>}</p>
       </SettingsShell>
     );
   }
 
   const grid = draft.grids[system];
   const def = defaultGridLayout(system);
-  const pool = orderSizes([
-    ...SIZE_POOLS[system],
-    ...def.mandatory,
-    ...def.optional,
-    ...(grid.custom ?? []),
-    ...grid.mandatory,
-    ...grid.optional,
-  ]);
-  const stateOf = (size: string): TileState =>
-    grid.mandatory.includes(size) ? "main" : grid.optional.includes(size) ? "optional" : "off";
+  // Only sizes in the grid are shown; others are added back by name below.
+  const pool = orderSizes([...grid.mandatory, ...grid.optional]);
+  const stateOf = (size: string): TileState => (grid.mandatory.includes(size) ? "main" : "optional");
 
   function updateGrid(next: GridLayout) {
     setDraft((d) => (d ? { ...d, grids: { ...d.grids, [system]: next } } : d));
     setStatus(null);
   }
 
-  // Tap cycles: off -> main -> optional -> off.
-  function cycle(size: string) {
-    const st = stateOf(size);
-    const mandatory = grid.mandatory.filter((s) => s !== size);
-    const optional = grid.optional.filter((s) => s !== size);
-    if (st === "off") mandatory.push(size);
-    if (st === "main") optional.push(size);
-    updateGrid({ ...grid, mandatory, optional });
+  // Tap switches main <-> optional.
+  function toggle(size: string) {
+    const main = stateOf(size) === "main";
+    updateGrid({
+      ...grid,
+      mandatory: main ? grid.mandatory.filter((s) => s !== size) : [...grid.mandatory, size],
+      optional: main ? [...grid.optional, size] : grid.optional.filter((s) => s !== size),
+    });
   }
 
   function addCustomSize(event: FormEvent) {
     event.preventDefault();
     const size = customSize.trim().toUpperCase();
     if (!/^[A-Z0-9/.-]{1,8}$/.test(size)) {
-      setCustomError("Use up to 8 letters/digits, e.g. 3XL or 35.");
+      setCustomError(t("Use up to 8 letters/digits, e.g. 3XL or 35."));
       return;
     }
     if (pool.includes(size)) {
-      setCustomError(`${size} is already in this grid - tap its tile.`);
+      setCustomError(t("{size} is already in this grid.", { size }));
       return;
     }
-    // A new size starts as a main size; tap it to make it optional or remove it.
+    // A new size starts as a main size. Sizes the app does not know for this
+    // grid are remembered as custom ones.
+    const known = SIZE_POOLS[system].includes(size) || [...def.mandatory, ...def.optional].includes(size);
+    const custom = (grid.custom ?? []).filter((s) => s !== size);
     updateGrid({
       mandatory: [...grid.mandatory, size],
       optional: grid.optional,
-      custom: [...(grid.custom ?? []), size],
+      custom: known ? custom : [...custom, size],
     });
     setCustomSize("");
     setCustomError("");
   }
 
-  function removeCustomSize(size: string) {
+  function removeSize(size: string) {
     updateGrid({
       mandatory: grid.mandatory.filter((s) => s !== size),
       optional: grid.optional.filter((s) => s !== size),
@@ -236,11 +261,11 @@ export default function LayoutEditorPage() {
     event.preventDefault();
     const capacity = Math.floor(Number(newFrontCapacity));
     if (!Number.isFinite(capacity) || capacity < 1 || capacity > MAX_FRONT_CAPACITY) {
-      setFrontError(`Capacity must be a number from 1 to ${MAX_FRONT_CAPACITY}.`);
+      setFrontError(t("Capacity must be a number from 1 to {max}.", { max: MAX_FRONT_CAPACITY }));
       return;
     }
     if (draft?.fronts.some((f) => f.capacity === capacity)) {
-      setFrontError(`There is already a front for ${capacity} pieces.`);
+      setFrontError(t("There is already a front for {n} pieces.", { n: capacity }));
       return;
     }
     const name = newFrontName.trim().slice(0, 24);
@@ -265,13 +290,14 @@ export default function LayoutEditorPage() {
         body: JSON.stringify({ layout: draftLayout }),
       });
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(typeof json.error === "string" ? json.error : "Could not save.");
+      // An English key; shown through t() below.
+      if (!res.ok) throw new Error(typeof json.error === "string" ? json.error : msg("Could not save."));
       const stored = (json.store?.layout ?? null) as SizeLayout | null;
       setSaved(stored);
       setDraft(draftFromLayout(stored));
-      setStatus({ kind: "ok", text: "Saved for the whole store. New items use it right away." });
+      setStatus({ kind: "ok", text: t("Saved for the whole store. New items use it right away.") });
     } catch (e) {
-      setStatus({ kind: "error", text: (e as Error).message });
+      setStatus({ kind: "error", text: t((e as Error).message) });
     } finally {
       setSaving(false);
     }
@@ -287,30 +313,33 @@ export default function LayoutEditorPage() {
 
   return (
     <SettingsShell
-      title="Store rules"
+      kicker={t("Store rules")}
+      title={storeName}
       backHref={backHref}
-      backLabel="Store"
+      backLabel={t("Store")}
       onBack={() => (dirty ? setConfirmLeave(true) : router.push(backHref))}
     >
       <p className="text-sm text-black/60">
-        These rules apply to everyone in {storeName} as soon as you save.
+        {t("These rules apply to everyone in {store} as soon as you save.", { store: storeName })}
       </p>
 
       {confirmLeave ? (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-sm border border-black/10 bg-white p-5">
-            <p className={LABEL}>Unsaved changes</p>
-            <p className="mt-2 text-sm text-black/60">Leave without saving the changes to the store rules?</p>
+            <p className={LABEL}>{t("Unsaved changes")}</p>
+            <p className="mt-2 text-sm text-black/60">
+              {t("Leave without saving the changes to the store rules?")}
+            </p>
             <div className="mt-4 flex gap-2">
               <button type="button" className={`flex-1 ${SECONDARY} py-3`} onClick={() => setConfirmLeave(false)}>
-                Stay
+                {t("Stay")}
               </button>
               <button
                 type="button"
                 className="flex-1 bg-accent px-3 py-3 text-[12px] font-semibold uppercase tracking-[0.04em] text-white"
                 onClick={() => router.push(backHref)}
               >
-                Discard
+                {t("Discard")}
               </button>
             </div>
           </div>
@@ -318,8 +347,10 @@ export default function LayoutEditorPage() {
       ) : null}
 
       <Section
-        title="Size grids"
-        description="Tap a size to cycle: main → optional → not offered. Main sizes count toward the target; optional ones are offered in the hall and suggested in the warehouse only if available."
+        title={t("Size grids")}
+        description={t(
+          "Tap a size to switch it between main and optional, × takes it out of the grid. Main sizes count toward the target; optional ones are offered in the hall and suggested in the warehouse only if available.",
+        )}
       >
         <div className="space-y-1.5">
           <div className="flex gap-1.5">
@@ -330,7 +361,7 @@ export default function LayoutEditorPage() {
                 className={chip(gender === g)}
                 onClick={() => setSystem(sizeSystemFromParts(g, category))}
               >
-                {g === "women" ? "Women" : "Men"}
+                {g === "women" ? t("Women") : t("Men")}
               </button>
             ))}
           </div>
@@ -345,9 +376,9 @@ export default function LayoutEditorPage() {
                   className={chip(category === c.value)}
                   onClick={() => setSystem(target)}
                 >
-                  {c.label}
+                  {t(c.label)}
                   {changed ? (
-                    <span className="absolute right-1 top-1 h-1.5 w-1.5 rounded-full bg-accent" aria-label="customized" />
+                    <span className="absolute end-1 top-1 h-1.5 w-1.5 rounded-full bg-accent" aria-label={t("customized")} />
                   ) : null}
                 </button>
               );
@@ -357,56 +388,65 @@ export default function LayoutEditorPage() {
 
         <div className="mt-5 border border-black/10 bg-white p-3">
           <div className="flex items-baseline justify-between gap-2">
-            <p className={LABEL}>{gridTitle(system)}</p>
+            <p className={LABEL}>{gridTitle(system, t)}</p>
             {!isDefaultGrid(system, grid) ? (
               <button
                 type="button"
                 className="text-[11px] font-semibold uppercase tracking-wide text-black/45 underline underline-offset-2"
                 onClick={() => updateGrid({ ...def, custom: [] })}
               >
-                Reset grid
+                {t("Reset grid")}
               </button>
             ) : null}
           </div>
 
           <div className="mt-3 flex flex-wrap gap-1.5">
             {pool.map((size) => (
-              <SizeTile key={size} size={size} state={stateOf(size)} onTap={() => cycle(size)} />
+              <SizeTile
+                key={size}
+                size={size}
+                state={stateOf(size)}
+                onTap={() => toggle(size)}
+                onRemove={() => removeSize(size)}
+              />
             ))}
           </div>
 
           <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-black/50">
             <span className="inline-flex items-center gap-1.5">
-              <span className="h-3 w-3 border border-accent bg-accent" /> main
+              <span className="h-3 w-3 border border-accent bg-accent" /> {t("main")}
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <span className="h-3 w-3 border border-dashed border-black/50" /> optional
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <span className="h-3 w-3 border border-black/10" /> not offered
+              <span className="h-3 w-3 border border-dashed border-black/50" /> {t("optional")}
             </span>
           </div>
 
           {grid.mandatory.length === 0 ? (
-            <p className="mt-3 text-sm text-danger">Pick at least one main size - it defines the target.</p>
+            <p className="mt-3 text-sm text-danger">
+              {t("Pick at least one main size - it defines the target.")}
+            </p>
           ) : (
             <dl className="mt-3 space-y-1 border-t border-black/10 pt-3 text-sm">
               <div className="flex gap-2">
-                <dt className="w-24 shrink-0 text-black/50">Regular item</dt>
+                <dt className="w-24 shrink-0 text-black/50">{t("Regular item")}</dt>
                 <dd className="font-semibold">
                   {orderSizes(grid.mandatory).join(" ")}
-                  <span className="font-normal text-black/45"> · target {regularTarget}</span>
+                  <span className="font-normal text-black/45">
+                    {" "}
+                    · {t("target {target}", { target: regularTarget })}
+                  </span>
                 </dd>
               </div>
               {grid.optional.length ? (
                 <div className="flex gap-2">
-                  <dt className="w-24 shrink-0 text-black/50">Optional</dt>
+                  <dt className="w-24 shrink-0 text-black/50">{t("Optional")}</dt>
                   <dd>{orderSizes(grid.optional).join(" ")}</dd>
                 </div>
               ) : null}
               {draft.fronts.map((f) => (
                 <div key={f.capacity} className="flex gap-2">
-                  <dt className="w-24 shrink-0 truncate text-black/50">{f.name || `Front ${f.capacity}`}</dt>
+                  <dt className="w-24 shrink-0 truncate text-black/50">{f.name || t("Front {capacity}", { capacity: f.capacity })}
+                  </dt>
                   <dd className="text-black/80">
                     {tokens(buildTargetSizes(system, f.capacity, draftLayout)).join(" ")}
                   </dd>
@@ -417,7 +457,7 @@ export default function LayoutEditorPage() {
 
           <form onSubmit={addCustomSize} className="mt-3 border-t border-black/10 pt-3">
             <label className={FIELD_LABEL}>
-              Add a size to this grid
+              {t("Add a size to this grid")}
               <div className="mt-1 flex gap-2">
                 <input
                   value={customSize}
@@ -425,42 +465,29 @@ export default function LayoutEditorPage() {
                     setCustomSize(e.target.value);
                     setCustomError("");
                   }}
-                  placeholder="e.g. 3XL"
+                  placeholder={t("e.g. 3XL")}
                   autoCapitalize="characters"
                   maxLength={8}
                   className={`${INPUT} mt-0 flex-1`}
                 />
                 <button type="submit" className={SECONDARY} disabled={!customSize.trim()}>
-                  Add
+                  {t("Add")}
                 </button>
               </div>
             </label>
             {customError ? <p className="mt-1.5 text-sm text-danger">{customError}</p> : null}
-            {grid.custom?.length ? (
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {orderSizes(grid.custom).map((size) => (
-                  <button
-                    key={size}
-                    type="button"
-                    onClick={() => removeCustomSize(size)}
-                    className="border border-black/10 px-2 py-1 text-xs text-black/60"
-                    aria-label={`Remove ${size}`}
-                  >
-                    {size} ×
-                  </button>
-                ))}
-              </div>
-            ) : null}
           </form>
         </div>
       </Section>
 
       <Section
-        title="Fronts"
-        description="A front is filled up to its capacity with the grid's main and optional sizes, doubling the most popular ones."
+        title={t("Fronts")}
+        description={t(
+          "A front is filled up to its capacity with the grid's main and optional sizes, doubling the most popular ones.",
+        )}
       >
         {draft.fronts.length === 0 ? (
-          <p className="text-sm text-black/50">No fronts - items can only be regular.</p>
+          <p className="text-sm text-black/50">{t("No fronts - items can only be regular.")}</p>
         ) : (
           <ul className="divide-y divide-black/10 border border-black/10 bg-white">
             {draft.fronts.map((f) => (
@@ -474,16 +501,18 @@ export default function LayoutEditorPage() {
                       ),
                     )
                   }
-                  placeholder={`Front ${f.capacity}`}
-                  aria-label={`Name of the ${f.capacity}-piece front`}
+                  placeholder={t("Front {capacity}", { capacity: f.capacity })}
+                  aria-label={t("Name of the {capacity}-piece front", { capacity: f.capacity })}
                   className="min-w-0 flex-1 border border-transparent px-1 py-1.5 text-sm font-semibold outline-none focus:border-black/15"
                 />
-                <span className="shrink-0 text-xs text-black/45">{f.capacity} pcs</span>
+                <span className="shrink-0 text-xs text-black/45">{t("{n} pcs", { n: f.capacity })}</span>
                 <button
                   type="button"
                   onClick={() => setFronts(draft.fronts.filter((x) => x.capacity !== f.capacity))}
                   className="shrink-0 px-2 py-1 text-lg leading-none text-black/40"
-                  aria-label={`Remove ${f.name || `Front ${f.capacity}`}`}
+                  aria-label={t("Remove {name}", {
+                    name: f.name || t("Front {capacity}", { capacity: f.capacity }),
+                  })}
                 >
                   ×
                 </button>
@@ -494,7 +523,7 @@ export default function LayoutEditorPage() {
 
         <form onSubmit={addFront} className="mt-3 flex items-end gap-2">
           <label className={`w-24 shrink-0 ${FIELD_LABEL}`}>
-            Pieces
+            {t("Pieces")}
             <input
               value={newFrontCapacity}
               onChange={(e) => {
@@ -507,16 +536,16 @@ export default function LayoutEditorPage() {
             />
           </label>
           <label className={`min-w-0 flex-1 ${FIELD_LABEL}`}>
-            Name (optional)
+            {t("Name (optional)")}
             <input
               value={newFrontName}
               onChange={(e) => setNewFrontName(e.target.value.slice(0, 24))}
-              placeholder="e.g. Table"
+              placeholder={t("e.g. Table")}
               className={INPUT}
             />
           </label>
           <button type="submit" className={`${SECONDARY} py-3`} disabled={!newFrontCapacity}>
-            Add
+            {t("Add")}
           </button>
         </form>
         {frontError ? <p className="mt-1.5 text-sm text-danger">{frontError}</p> : null}
@@ -531,7 +560,7 @@ export default function LayoutEditorPage() {
             setStatus(null);
           }}
         >
-          Reset everything to defaults
+          {t("Reset everything to defaults")}
         </button>
       </section>
 
@@ -539,7 +568,9 @@ export default function LayoutEditorPage() {
       <div className="sticky bottom-0 -mx-4 border-t border-black/10 bg-white/95 px-4 pb-4 pt-3 backdrop-blur">
         {invalidGrids.length ? (
           <p className="mb-2 text-sm text-danger">
-            No main size in: {invalidGrids.map(gridTitle).join(", ")}
+            {t("No main size in: {grids}", {
+              grids: invalidGrids.map((s) => gridTitle(s, t)).join(", "),
+            })}
           </p>
         ) : null}
         <StatusText status={status} />
@@ -549,7 +580,13 @@ export default function LayoutEditorPage() {
           disabled={!dirty || saving || invalidGrids.length > 0}
           className={`mt-2 ${CTA}`}
         >
-          {saving ? <Busy>Saving...</Busy> : dirty ? "Save for the whole store" : "Saved"}
+          {saving ? (
+            <Busy>{t("Saving...")}</Busy>
+          ) : dirty ? (
+            t("Save for the whole store")
+          ) : (
+            t("Saved")
+          )}
         </button>
       </div>
     </SettingsShell>
